@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useCallback, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useCallback, useRef, useState } from "react";
 import {
   motion,
   AnimatePresence,
@@ -8,6 +8,8 @@ import {
 } from "framer-motion";
 import { Sticker } from "@/lib/types";
 import { saveSticker, deleteSticker } from "@/lib/db";
+// MOBILE FIX: shared flag so ImageSlot can suppress ghost clicks from sticker taps
+import { markStickerPress } from "@/lib/stickerInteraction";
 
 // ─── StickerLayer ─────────────────────────────────────────────────────────────
 interface StickerLayerProps {
@@ -74,7 +76,7 @@ export default function StickerLayer(props: StickerLayerProps) {
 // ─── PeelAnimation ────────────────────────────────────────────────────────────
 //
 // Realistic sticker peeling logic adapted to arbitrary PNG shapes.
-// 
+//
 // ── Architecture ────────────────────────────────────────────────────────────
 //
 //   container (absolute, full width/height)
@@ -83,7 +85,7 @@ export default function StickerLayer(props: StickerLayerProps) {
 //   └─ flap   : The peeling part, preserved-3d.
 //      │        Origin moves exactly along the fold line.
 //      ├─ front : front mask (transparent to black), transparent backface
-//      └─ back  : rotated 180° Y, mirrored mask (to bottom left), paper textured 
+//      └─ back  : rotated 180° Y, mirrored mask (to bottom left), paper textured
 //                 masked again by the sticker outline (url)
 //
 interface PeelAnimationProps {
@@ -193,7 +195,10 @@ function PeelAnimation({ sticker, originX, originY, peelScale = 1, onDone }: Pee
         transformOrigin: "top left",
         width:           sticker.width,
         height:          sticker.height,
-        pointerEvents:   "none",
+        // MOBILE FIX: "auto" instead of "none" so the ~300 ms ghost click that
+        // the browser synthesises after touchend lands here and goes no further,
+        // preventing it from reaching the ImageSlot underneath.
+        pointerEvents:   "auto",
         zIndex:          20,
       }}
     >
@@ -273,6 +278,87 @@ function DraggableSticker({
   const isResizingRef = useRef(false);
   const resizeStartRef = useRef({ clientX: 0, clientY: 0, scale: 1 });
 
+  // ── Mobile detection (client-only) ──────────────────────────────────────
+  // Used to: skip mouse-compat pointer events, enlarge handles, enable pinch.
+  const isMobileRef = useRef(false);
+  useLayoutEffect(() => {
+    isMobileRef.current =
+      window.innerWidth < 768 || navigator.maxTouchPoints > 0;
+  }, []);
+
+  // ── Ref to the DOM node — needed for native touch listeners ─────────────
+  const divRef = useRef<HTMLDivElement>(null);
+
+  // ── Refs so event handlers always see current prop values ────────────────
+  // (avoids adding sticker/allStickers/onStickersChange to every useEffect dep)
+  const stickerRef    = useRef(sticker);
+  const allStickersR  = useRef(allStickers);
+  const onChangeRef   = useRef(onStickersChange);
+  stickerRef.current   = sticker;
+  allStickersR.current = allStickers;
+  onChangeRef.current  = onStickersChange;
+
+  // ── Pinch-to-resize (mobile) ─────────────────────────────────────────────
+  // Attach native touch listeners directly on the element so stopImmediatePropagation
+  // fires at the element level — preventing react-pageflip's ancestor listener from
+  // seeing the touch and triggering a page flip, while keeping pointer events alive
+  // (we do NOT call preventDefault on touchstart, which would cancel pointer events).
+  const pinchRef = useRef<{ dist: number; scale: number } | null>(null);
+
+  useEffect(() => {
+    const el = divRef.current;
+    if (!el) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      // Stop page-flip without cancelling pointer events.
+      // stopImmediatePropagation prevents bubbling to react-pageflip on ancestors;
+      // omitting preventDefault keeps the pointer event sequence alive so Framer
+      // Motion drag still works via pointerdown/pointermove/pointerup.
+      e.stopImmediatePropagation();
+
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        pinchRef.current = { dist: Math.hypot(dx, dy), scale: scaleMotion.get() };
+      } else {
+        pinchRef.current = null;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!pinchRef.current || e.touches.length !== 2) return;
+      // Prevent scroll/page during a two-finger pinch on the sticker.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const ratio = Math.hypot(dx, dy) / pinchRef.current.dist;
+      scaleMotion.set(Math.max(0.25, Math.min(5, pinchRef.current.scale * ratio)));
+    };
+
+    const onTouchEnd = async () => {
+      if (!pinchRef.current) return;
+      const newScale = scaleMotion.get();
+      pinchRef.current = null;
+      // Persist the new scale
+      const updated = { ...stickerRef.current, scale: newScale };
+      onChangeRef.current(allStickersR.current.map((s) => s.id === updated.id ? updated : s));
+      await saveSticker(updated);
+    };
+
+    el.addEventListener("touchstart",  onTouchStart,  { passive: true  });
+    el.addEventListener("touchmove",   onTouchMove,   { passive: false }); // needs preventDefault
+    el.addEventListener("touchend",    onTouchEnd,    { passive: true  });
+    el.addEventListener("touchcancel", onTouchEnd,    { passive: true  });
+
+    return () => {
+      el.removeEventListener("touchstart",  onTouchStart);
+      el.removeEventListener("touchmove",   onTouchMove);
+      el.removeEventListener("touchend",    onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [scaleMotion]); // only scaleMotion needed — sticker/allStickers accessed via refs
+
   useEffect(() => {
     x.set(sticker.x * containerWidth);
     y.set(sticker.y * containerHeight);
@@ -337,11 +423,13 @@ function DraggableSticker({
     await saveSticker(updated);
   }, [sticker, allStickers, onStickersChange, scaleMotion]);
 
-  // ── Prevent react-pageflip from stealing drag events ──────────────────────
-  // react-pageflip attaches raw addEventListener('mousedown') on its canvas.
-  // React's stopPropagation only stops React's synthetic event system.
+  // ── Prevent react-pageflip from stealing drag events (desktop) ────────────
+  // On desktop, react-pageflip attaches a native mousedown listener. React's
+  // stopPropagation only stops React's synthetic event system.
   // stopImmediatePropagation on the native event stops ALL handlers on ALL
   // ancestor elements, including react-pageflip's native listeners.
+  // On mobile, touchstart is handled by the native listener in the useEffect
+  // above — no need to duplicate it here.
   const stopNative = useCallback((e: React.SyntheticEvent) => {
     e.stopPropagation();
     (e.nativeEvent as Event).stopImmediatePropagation();
@@ -349,19 +437,33 @@ function DraggableSticker({
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     stopNative(e);
+    // MOBILE FIX: mark so ImageSlot.onClick can suppress ghost clicks that
+    // arrive ~300 ms after touchend when the sticker is no longer intercepting.
+    markStickerPress();
     pointerDownPos.current = { x: e.clientX, y: e.clientY };
     onSelect(); // select immediately on press — instant visual feedback
   }, [stopNative, onSelect]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (isPeeling) return;
+
+    // ── Mobile: skip mouse-compat pointer events ─────────────────────────
+    // After touchend, mobile browsers synthesise mousedown/mouseup (pointerType
+    // "mouse") for backwards compatibility. These arrive ~0–300 ms after the
+    // real touch pointerup and would reset lastTapRef, making double-tap
+    // detection unreliable. Skip them on touch-capable devices.
+    if (isMobileRef.current && e.pointerType === "mouse") return;
+
     const dx = Math.abs(e.clientX - pointerDownPos.current.x);
     const dy = Math.abs(e.clientY - pointerDownPos.current.y);
     if (dx > 8 || dy > 8) return; // was a drag — ignore
 
     const now = Date.now();
     const delta = now - lastTapRef.current;
-    if (delta < 350 && delta > 40) {
+    // Touch double-taps have a wider natural gap than mouse double-clicks,
+    // so allow up to 600 ms between taps on touch devices.
+    const maxGap = e.pointerType === "touch" ? 600 : 350;
+    if (delta < maxGap && delta > 30) {
       // Double-tap: snapshot position AND current scale before re-render so
       // PeelAnimation starts at the exact same visual state — no size jump.
       peelOrigin.current = { x: x.get(), y: y.get() };
@@ -369,7 +471,7 @@ function DraggableSticker({
       setIsPeeling(true);
     }
     lastTapRef.current = now;
-  }, [isPeeling, x, y]);
+  }, [isPeeling, x, y, scaleMotion]);
 
   // Switch to the peel branch on double-tap
   if (isPeeling) {
@@ -384,12 +486,17 @@ function DraggableSticker({
     );
   }
 
+  // Resize handle dimensions — larger on touch devices for easier tapping.
+  const handleSize   = isMobileRef.current ? 28 : 16;
+  const handleOffset = -(handleSize / 2);
+
   return (
     <motion.div
       // [data-sticker] lets the document capture listener distinguish sticker
       // taps from outside-taps so selection is never cleared mid-drag or on
       // a tap on the sticker body / resize handle.
       data-sticker={sticker.id}
+      ref={divRef}
       style={{
         position: "absolute",
         top: 0,
@@ -417,8 +524,7 @@ function DraggableSticker({
       dragMomentum={false}
       dragElastic={0}
       onPointerDown={handlePointerDown}
-      onMouseDown={stopNative}    // stops react-pageflip's mousedown listener
-      onTouchStart={stopNative}   // stops react-pageflip's touchstart listener
+      onMouseDown={stopNative}    // stops react-pageflip's mousedown listener (desktop)
       onPointerUp={handlePointerUp}
       onDragEnd={handleDragEnd}
       // Shadow lift instead of scale-on-drag to avoid conflicting with resize scale
@@ -444,13 +550,15 @@ function DraggableSticker({
       />
 
       {/* ── Resize handle — visible only when this sticker is selected ── */}
+      {/* On mobile the handle is larger (28 px) for easier finger targeting. */}
+      {/* Pinch-to-resize is also available on mobile as the primary gesture. */}
       <div
         style={{
           position: "absolute",
-          bottom: -8,
-          right: -8,
-          width: 16,
-          height: 16,
+          bottom: handleOffset,
+          right: handleOffset,
+          width: handleSize,
+          height: handleSize,
           borderRadius: "50%",
           background: "rgba(255,255,255,0.97)",
           border: "1.5px solid rgba(99,102,241,0.7)",

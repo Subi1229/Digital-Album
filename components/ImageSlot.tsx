@@ -2,6 +2,8 @@
 
 import React, { useRef } from "react";
 import { motion } from "framer-motion";
+// MOBILE FIX: suppress ghost clicks that originate from sticker interactions
+import { isStickerRecentlyPressed, wasCornerTapRecent } from "@/lib/stickerInteraction";
 
 interface ImageSlotProps {
   imageUrl: string | null;
@@ -65,6 +67,10 @@ export default function ImageSlot({
 
   return (
     <motion.div
+      // data-slot lets AlbumBook skip corner-flip detection when the tap
+      // lands on a photo slot (prevents slot tap from simultaneously
+      // opening the file picker AND flipping the page on mobile).
+      data-slot="true"
       className="relative cursor-pointer select-none"
       style={{
         width: slotWidth,
@@ -85,7 +91,14 @@ export default function ImageSlot({
       }
       whileTap={{ scale: 0.97 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
-      onClick={onClick}
+      onClick={() => {
+        // MOBILE FIX: ghost click from sticker interaction — swallow silently.
+        if (isStickerRecentlyPressed()) return;
+        // MOBILE FIX: corner tap fired goPrev/goNext — swallow so the file
+        // picker doesn't open when the corner zone overlaps an image slot.
+        if (wasCornerTapRecent()) return;
+        onClick();
+      }}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}

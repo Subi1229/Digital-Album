@@ -4,8 +4,9 @@
     {
       "name": "digital-photo-album",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3030"],
-      "port": 3030
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }

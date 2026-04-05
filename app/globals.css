@@ -34,11 +34,19 @@ body {
   border-radius: 2px;
 }
 
+/* Keep clipping/isolation on the actual flipping page nodes (including clones) */
+.album-flip .stf__item {
+  overflow: hidden;
+  isolation: isolate;
+}
+
 /* Page corner hover cue */
 .album-page {
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   will-change: transform;
+  overflow: hidden;
+  isolation: isolate;
 }
 
 /* ── Range input (zoom slider in crop modal) ───────────────── */
