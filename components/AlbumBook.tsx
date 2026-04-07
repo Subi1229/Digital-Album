@@ -31,6 +31,8 @@ type AlbumMeta = {
   createdAt: number;
   isFavorite: boolean;
   lastOpenedAt: number;
+  templateId: 1 | 2 | 3 | 4;
+  pageTemplates?: Record<number, 1 | 2 | 3 | 4>;
 };
 
 type AlbumTab = "all" | "favourite" | "recent";
@@ -39,7 +41,7 @@ type AlbumDialog =
   | { type: "delete"; albumId: string };
 
 const DEFAULT_ALBUMS: AlbumMeta[] = [
-  { id: "album-1", name: "Album 1", createdAt: 1, isFavorite: false, lastOpenedAt: Date.now() },
+  { id: "album-1", name: "Album 1", createdAt: 1, isFavorite: false, lastOpenedAt: Date.now(), templateId: 1 },
 ];
 
 function normalizeAlbums(raw: unknown): AlbumMeta[] {
@@ -74,6 +76,17 @@ function normalizeAlbums(raw: unknown): AlbumMeta[] {
         createdAt: a.createdAt,
         isFavorite: Boolean((a as any).isFavorite),
         lastOpenedAt: typeof (a as any).lastOpenedAt === "number" ? (a as any).lastOpenedAt : a.createdAt,
+        templateId: ([1, 2, 3, 4].includes((a as any).templateId) ? (a as any).templateId : 1) as 1 | 2 | 3 | 4,
+        pageTemplates: (() => {
+          const raw = (a as any).pageTemplates;
+          if (!raw || typeof raw !== "object") return undefined;
+          const result: Record<number, 1 | 2 | 3 | 4> = {};
+          for (const [k, v] of Object.entries(raw)) {
+            const num = Number(k);
+            if (!isNaN(num) && [1, 2, 3, 4].includes(Number(v))) result[num] = Number(v) as 1 | 2 | 3 | 4;
+          }
+          return Object.keys(result).length > 0 ? result : undefined;
+        })(),
       } as AlbumMeta;
     })
     .filter((a): a is AlbumMeta => a !== null);
@@ -152,6 +165,9 @@ export default function AlbumBook() {
   const [albumDialog, setAlbumDialog] = useState<AlbumDialog | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [albumFirstSlotImages, setAlbumFirstSlotImages] = useState<Record<string, string>>({});
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateModalStep, setTemplateModalStep] = useState<"pick" | "custom">("pick");
+  const [pendingCustomStyles, setPendingCustomStyles] = useState<(1 | 2 | 3 | 4)[]>([]);
 
   // â”€â”€ Load + migrate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const loadAlbumData = useCallback(async (albumId: string, includeLibrary: boolean) => {
@@ -366,7 +382,14 @@ export default function AlbumBook() {
       console.error("Album switch error:", e);
     }
   }, [activeAlbumId, loadAlbumData, pendingCrop, updateAlbums]);
-  const handleAddNewAlbum = useCallback(async () => {
+  const handleAddNewAlbum = useCallback(() => {
+    setTemplateModalStep("pick");
+    setPendingCustomStyles([]);
+    setShowTemplateModal(true);
+  }, []);
+
+  const handleConfirmTemplate = useCallback(async (tid: 1 | 2 | 3 | 4) => {
+    setShowTemplateModal(false);
     const nextNumber = albums.length + 1;
     const createdAt = Date.now();
     const nextAlbum: AlbumMeta = {
@@ -375,6 +398,7 @@ export default function AlbumBook() {
       createdAt,
       isFavorite: false,
       lastOpenedAt: createdAt,
+      templateId: tid,
     };
     if (pendingCrop?.objectUrl) URL.revokeObjectURL(pendingCrop.objectUrl);
     setPendingCrop(null);
@@ -394,6 +418,42 @@ export default function AlbumBook() {
       setStickers([]);
     }
   }, [albums.length, loadAlbumData, pendingCrop, updateAlbums]);
+  const handleConfirmCustomStyle = useCallback(async (styles: (1 | 2 | 3 | 4)[]) => {
+    setShowTemplateModal(false);
+    const pageTemplates: Record<number, 1 | 2 | 3 | 4> = {};
+    for (let i = 0; i < TOTAL_PAGES; i++) {
+      pageTemplates[i] = styles[Math.floor(Math.random() * styles.length)];
+    }
+    const nextNumber = albums.length + 1;
+    const createdAt = Date.now();
+    const nextAlbum: AlbumMeta = {
+      id: `album-${createdAt}`,
+      name: `Album ${nextNumber}`,
+      createdAt,
+      isFavorite: false,
+      lastOpenedAt: createdAt,
+      templateId: 1,
+      pageTemplates,
+    };
+    if (pendingCrop?.objectUrl) URL.revokeObjectURL(pendingCrop.objectUrl);
+    setPendingCrop(null);
+    updateAlbums((prev) => [...prev, nextAlbum]);
+    setActiveAlbumId(nextAlbum.id);
+    persistActiveAlbum(nextAlbum.id);
+    setActiveTab("all");
+    setMenuAlbumId(null);
+    setIsSidebarOpen(false);
+    setStickerPanelOpen(false);
+    setCurrentPage(0);
+    try {
+      await loadAlbumData(nextAlbum.id, false);
+    } catch (e) {
+      console.error("New album load error:", e);
+      setImages({});
+      setStickers([]);
+    }
+  }, [albums.length, loadAlbumData, pendingCrop, updateAlbums]);
+
   const handleToggleFavorite = useCallback((albumId: string) => {
     updateAlbums((prev) =>
       prev.map((a) => (a.id === albumId ? { ...a, isFavorite: !a.isFavorite } : a))
@@ -464,6 +524,12 @@ export default function AlbumBook() {
   const dialogAlbumName =
     (albumDialog ? albums.find((a) => a.id === albumDialog.albumId)?.name : null) ?? "this album";
   const activeAlbumName = albums.find((a) => a.id === activeAlbumId)?.name ?? "My Photo Album";
+  const activeTemplateId = (albums.find((a) => a.id === activeAlbumId)?.templateId ?? 1) as 1 | 2 | 3 | 4;
+  const getPageTemplateId = useCallback((pageIdx: number): 1 | 2 | 3 | 4 => {
+    const album = albums.find((a) => a.id === activeAlbumId);
+    if (album?.pageTemplates) return album.pageTemplates[pageIdx] ?? activeTemplateId;
+    return activeTemplateId;
+  }, [albums, activeAlbumId, activeTemplateId]);
   const visibleAlbums = useMemo(() => {
     if (activeTab === "favourite") return albums.filter((a) => a.isFavorite);
     if (activeTab === "recent") return [...albums].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
@@ -900,6 +966,7 @@ export default function AlbumBook() {
                         onStickersChange={handleStickersChange}
                         onStickerPanelOpen={handleStickerPanelOpen}
                         pageNumber={pageIdx + 1}
+                        templateId={getPageTemplateId(pageIdx)}
                       />
                     ))}
                   </HTMLFlipBook>
@@ -1072,6 +1139,149 @@ export default function AlbumBook() {
         )}
       </AnimatePresence>
 
+      {/* ── Template selection modal ──────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showTemplateModal && (
+          <>
+            <motion.button
+              type="button"
+              aria-label="Close template modal"
+              className="fixed inset-0 z-[120]"
+              style={{ background: "rgba(0,0,0,0.30)", backdropFilter: "blur(2px)" }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowTemplateModal(false)}
+            />
+            <motion.div
+              className="fixed inset-0 z-[130] flex items-center justify-center px-4 sm:px-6"
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ type: "spring", stiffness: 280, damping: 26 }}
+            >
+              <div
+                className="w-[331px] max-w-[calc(100vw-2rem)] rounded-2xl px-4 py-5 sm:w-[420px] sm:px-6 sm:py-6"
+                style={{ background: "#F5F5F4", boxShadow: "0 22px 48px rgba(0,0,0,0.20)" }}
+              >
+                {templateModalStep === "pick" ? (
+                  <>
+                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1C1917", fontWeight: 500 }}>
+                      Choose a Template
+                    </p>
+                    <div className="mt-5 grid grid-cols-2 gap-3">
+                      {([1, 2, 3, 4] as (1 | 2 | 3 | 4)[]).map((tid) => (
+                        <motion.button
+                          key={tid}
+                          type="button"
+                          onClick={() => handleConfirmTemplate(tid)}
+                          className="flex flex-col items-center gap-2 rounded-xl p-3"
+                          style={{ background: "rgba(255,255,255,0.90)", border: "1.5px solid rgba(0,0,0,0.09)" }}
+                          whileHover={{ scale: 1.03, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
+                          whileTap={{ scale: 0.97 }}
+                        >
+                          <TemplatePreview templateId={tid} />
+                          <span className="text-[11px] font-sans font-medium" style={{ color: "#57534E" }}>
+                            Style {tid}
+                          </span>
+                        </motion.button>
+                      ))}
+                      <motion.button
+                        type="button"
+                        className="col-span-2 flex items-center justify-center gap-2 rounded-xl p-3"
+                        style={{ background: "rgba(255,255,255,0.90)", border: "1.5px solid rgba(0,0,0,0.09)" }}
+                        whileHover={{ scale: 1.02, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => setTemplateModalStep("custom")}
+                      >
+                        <span className="text-[13px] font-sans font-medium" style={{ color: "#57534E" }}>Custom Mix</span>
+                        <span className="text-[11px] font-sans" style={{ color: "#A8A29E" }}>— choose 2–4 styles</span>
+                      </motion.button>
+                    </div>
+                    <div className="mt-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowTemplateModal(false)}
+                        className="w-full h-11 rounded-full text-[15px] font-sans"
+                        style={{ background: "#18181B", color: "#FAFAF9", fontWeight: 500 }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1C1917", fontWeight: 500 }}>
+                      Custom Mix
+                    </p>
+                    <p className="text-center text-[12px] font-sans mt-1" style={{ color: "#A8A29E" }}>
+                      Select 2–4 styles to mix across pages
+                    </p>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      {([1, 2, 3, 4] as (1 | 2 | 3 | 4)[]).map((tid) => {
+                        const selected = pendingCustomStyles.includes(tid);
+                        return (
+                          <motion.button
+                            key={tid}
+                            type="button"
+                            className="flex flex-col items-center gap-2 rounded-xl p-3 relative"
+                            style={{
+                              background: selected ? "rgba(68,64,60,0.10)" : "rgba(255,255,255,0.90)",
+                              border: selected ? "1.5px solid #78716C" : "1.5px solid rgba(0,0,0,0.09)",
+                            }}
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => {
+                              setPendingCustomStyles((prev) =>
+                                prev.includes(tid)
+                                  ? prev.filter((s) => s !== tid)
+                                  : prev.length < 4 ? [...prev, tid] : prev
+                              );
+                            }}
+                          >
+                            <TemplatePreview templateId={tid} />
+                            <span className="text-[11px] font-sans font-medium" style={{ color: "#57534E" }}>
+                              Style {tid}
+                            </span>
+                            {selected && (
+                              <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "#44403C" }}>
+                                <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                                  <path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              </div>
+                            )}
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTemplateModalStep("pick")}
+                        className="h-11 rounded-full text-[15px] font-sans"
+                        style={{ border: "2px solid #D6D3D1", color: "#57534E", background: "transparent" }}
+                      >
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pendingCustomStyles.length < 2}
+                        onClick={() => handleConfirmCustomStyle(pendingCustomStyles)}
+                        className="h-11 rounded-full text-[15px] font-sans"
+                        style={{
+                          background: pendingCustomStyles.length < 2 ? "rgba(24,24,27,0.35)" : "#18181B",
+                          color: "#FAFAF9",
+                          fontWeight: 500,
+                        }}
+                      >
+                        Create Album
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
 
       {/* â”€â”€ Modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
@@ -1086,6 +1296,64 @@ export default function AlbumBook() {
         onLibraryChange={handleLibraryChange}
       />
     </div>
+  );
+}
+
+function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 }) {
+  const W = 90;
+  const H = 120;
+  const px = 8;
+  const py = 8;
+  const gw = W - px * 2;
+  const gh = H - py * 2;
+  const gap = 3;
+  const slotFill = "rgb(214,211,209)";
+  const slotBg = "rgb(250,250,249)";
+  type R = { x: number; y: number; w: number; h: number };
+  const slots: R[] = [];
+
+  if (templateId === 1) {
+    const sw = (gw - gap * 2) / 3;
+    const sh = (gh - gap * 2) / 3;
+    for (let r = 0; r < 3; r++)
+      for (let c = 0; c < 3; c++)
+        slots.push({ x: px + c * (sw + gap), y: py + r * (sh + gap), w: sw, h: sh });
+  } else if (templateId === 2) {
+    const sw = (gw - gap) / 2;
+    const sh = (gh - gap * 2) / 3;
+    for (let r = 0; r < 3; r++)
+      for (let c = 0; c < 2; c++)
+        slots.push({ x: px + c * (sw + gap), y: py + r * (sh + gap), w: sw, h: sh });
+  } else if (templateId === 3) {
+    const cw = (gw - gap) / 2;
+    const lth = Math.round(gh * (344 / 554));
+    const lbh = gh - lth - gap;
+    const rth = Math.round(gh * (170 / 554));
+    const rbh = gh - rth - gap;
+    slots.push(
+      { x: px,            y: py,             w: cw, h: lth },
+      { x: px,            y: py + lth + gap, w: cw, h: lbh },
+      { x: px + cw + gap, y: py,             w: cw, h: rth },
+      { x: px + cw + gap, y: py + rth + gap, w: cw, h: rbh },
+    );
+  } else {
+    const cw = (gw - gap) / 2;
+    const toph = Math.round(gh * (344 / 554));
+    const both = gh - toph - gap;
+    slots.push(
+      { x: px,            y: py,              w: gw, h: toph },
+      { x: px,            y: py + toph + gap, w: cw, h: both },
+      { x: px + cw + gap, y: py + toph + gap, w: cw, h: both },
+    );
+  }
+
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+      <rect width={W} height={H} rx={5} fill={slotBg} />
+      {slots.map((s, i) => (
+        <rect key={i} x={s.x} y={s.y} width={s.w} height={s.h} rx={2} fill={slotFill} />
+      ))}
+    </svg>
   );
 }
 

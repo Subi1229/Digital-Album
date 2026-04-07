@@ -26,6 +26,60 @@ const INNER_PAD_Y = 6;
 
 export const SLOT_ASPECT = SLOT_W / SLOT_H;
 
+// ─── Template slot helpers ────────────────────────────────────────────────────
+const SLOT_COL_W = Math.floor((GRID_W - COL_GAP) / 2); // 204
+const SLOT_COL2_X = SLOT_COL_W + COL_GAP;              // 212
+const T3_LT_H = 344;
+const T3_RT_H = 170;
+const T4_TOP_H = 344;
+
+type SlotDef = { x: number; y: number; w: number; h: number };
+
+function getSlotDefs(templateId: number, isLeft: boolean): SlotDef[] {
+  if (templateId === 2) {
+    return Array.from({ length: ROWS }, (_, r) =>
+      Array.from({ length: 2 }, (_, c) => ({
+        x: c * (SLOT_COL_W + COL_GAP),
+        y: r * (SLOT_H + ROW_GAP),
+        w: SLOT_COL_W,
+        h: SLOT_H,
+      }))
+    ).flat();
+  }
+  if (templateId === 3) {
+    return [
+      { x: 0,          y: 0,                       w: SLOT_COL_W, h: T3_LT_H },
+      { x: 0,          y: T3_LT_H + ROW_GAP,       w: SLOT_COL_W, h: GRID_H - T3_LT_H - ROW_GAP },
+      { x: SLOT_COL2_X, y: 0,                       w: SLOT_COL_W, h: T3_RT_H },
+      { x: SLOT_COL2_X, y: T3_RT_H + ROW_GAP,       w: SLOT_COL_W, h: GRID_H - T3_RT_H - ROW_GAP },
+    ];
+  }
+  if (templateId === 4) {
+    const BOT_H = GRID_H - T4_TOP_H - ROW_GAP;
+    if (!isLeft) {
+      return [
+        { x: 0,          y: 0,               w: SLOT_COL_W, h: BOT_H },
+        { x: SLOT_COL2_X, y: 0,              w: SLOT_COL_W, h: BOT_H },
+        { x: 0,          y: BOT_H + ROW_GAP, w: GRID_W,     h: T4_TOP_H },
+      ];
+    }
+    return [
+      { x: 0,          y: 0,                 w: GRID_W,     h: T4_TOP_H },
+      { x: 0,          y: T4_TOP_H + ROW_GAP, w: SLOT_COL_W, h: BOT_H },
+      { x: SLOT_COL2_X, y: T4_TOP_H + ROW_GAP, w: SLOT_COL_W, h: BOT_H },
+    ];
+  }
+  // Template 1 (default)
+  return Array.from({ length: ROWS }, (_, r) =>
+    Array.from({ length: COLS }, (_, c) => ({
+      x: c * (SLOT_W + COL_GAP),
+      y: r * (SLOT_H + ROW_GAP),
+      w: SLOT_W,
+      h: SLOT_H,
+    }))
+  ).flat();
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface AlbumPageProps {
   pageIndex: number;
@@ -38,6 +92,7 @@ export interface AlbumPageProps {
   /** Called when the sticker emoji button is tapped – parent opens StickerPanel */
   onStickerPanelOpen: (pageIndex: number) => void;
   pageNumber: number;
+  templateId?: 1 | 2 | 3 | 4;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -53,6 +108,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
       onStickersChange,
       onStickerPanelOpen,
       pageNumber,
+      templateId = 1,
     },
     ref
   ) => {
@@ -140,30 +196,23 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             zIndex: 2,
           }}
         >
-          <GridLines />
+          <GridLines templateId={templateId} isLeft={isLeft} />
 
-          {Array.from({ length: ROWS }).map((_, row) =>
-            Array.from({ length: COLS }).map((_, col) => {
-              const slotIndex = row * COLS + col;
-              const x = col * (SLOT_W + COL_GAP);
-              const y = row * (SLOT_H + ROW_GAP);
-              return (
-                <div
-                  key={slotIndex}
-                  className="absolute"
-                  style={{ left: x + INNER_PAD_X, top: y + INNER_PAD_Y }}
-                >
-                  <ImageSlot
-                    imageUrl={images[slotIndex] ?? null}
-                    onClick={() => onSlotClick(pageIndex, slotIndex)}
-                    onDropFile={(file) => onSlotDrop(file, pageIndex, slotIndex)}
-                    slotWidth={SLOT_W - INNER_PAD_X * 2}
-                    slotHeight={SLOT_H - INNER_PAD_Y * 2}
-                  />
-                </div>
-              );
-            })
-          )}
+          {getSlotDefs(templateId, isLeft).map((slot, slotIndex) => (
+            <div
+              key={slotIndex}
+              className="absolute"
+              style={{ left: slot.x + INNER_PAD_X, top: slot.y + INNER_PAD_Y }}
+            >
+              <ImageSlot
+                imageUrl={images[slotIndex] ?? null}
+                onClick={() => onSlotClick(pageIndex, slotIndex)}
+                onDropFile={(file) => onSlotDrop(file, pageIndex, slotIndex)}
+                slotWidth={slot.w - INNER_PAD_X * 2}
+                slotHeight={slot.h - INNER_PAD_Y * 2}
+              />
+            </div>
+          ))}
         </div>
 
         {/* ── Sticker layer ────────────────────────────── z:50 (above all) */}
@@ -225,37 +274,67 @@ AlbumPage.displayName = "AlbumPage";
 export default AlbumPage;
 
 // ─── Grid Lines ──────────────────────────────────────────────────────────────
-function GridLines() {
-  const lineColor = "rgba(233,233,233,1)";
+function GridLines({ templateId = 1, isLeft = false }: { templateId?: number; isLeft?: boolean }) {
+  const c = "rgba(233,233,233,1)";
+  const svgProps = {
+    className: "absolute inset-0 pointer-events-none",
+    width: GRID_W, height: GRID_H,
+    style: { overflow: "visible" as const, zIndex: 1 },
+  };
+
+  if (templateId === 2) {
+    const midX = SLOT_COL_W + COL_GAP / 2;
+    return (
+      <svg {...svgProps}>
+        <line x1={midX} y1={0} x2={midX} y2={GRID_H} stroke={c} strokeWidth={1} />
+        {Array.from({ length: ROWS - 1 }).map((_, i) => {
+          const y = (i + 1) * (SLOT_H + ROW_GAP) - ROW_GAP / 2;
+          return <line key={i} x1={0} y1={y} x2={GRID_W} y2={y} stroke={c} strokeWidth={1} />;
+        })}
+      </svg>
+    );
+  }
+
+  if (templateId === 3) {
+    const midX = SLOT_COL_W + COL_GAP / 2;
+    return (
+      <svg {...svgProps}>
+        <line x1={midX} y1={0} x2={midX} y2={GRID_H} stroke={c} strokeWidth={1} />
+        <line x1={0} y1={T3_LT_H + ROW_GAP / 2} x2={SLOT_COL_W} y2={T3_LT_H + ROW_GAP / 2} stroke={c} strokeWidth={1} />
+        <line x1={SLOT_COL2_X} y1={T3_RT_H + ROW_GAP / 2} x2={GRID_W} y2={T3_RT_H + ROW_GAP / 2} stroke={c} strokeWidth={1} />
+      </svg>
+    );
+  }
+
+  if (templateId === 4) {
+    const BOT_H = GRID_H - T4_TOP_H - ROW_GAP;
+    const midX = SLOT_COL_W + COL_GAP / 2;
+    const divY  = isLeft ? T4_TOP_H + ROW_GAP / 2 : BOT_H + ROW_GAP / 2;
+    const vY1   = isLeft ? T4_TOP_H + ROW_GAP : 0;
+    const vY2   = isLeft ? GRID_H : BOT_H;
+    return (
+      <svg {...svgProps}>
+        <line x1={0} y1={divY} x2={GRID_W} y2={divY} stroke={c} strokeWidth={1} />
+        <line x1={midX} y1={vY1} x2={midX} y2={vY2} stroke={c} strokeWidth={1} />
+      </svg>
+    );
+  }
+
+  // Template 1 (original)
+  const lineColor = c;
   const verticals = Array.from({ length: COLS - 1 }).map((_, i) => ({
     x: (i + 1) * (SLOT_W + COL_GAP) - COL_GAP / 2,
   }));
   const horizontals = Array.from({ length: ROWS - 1 }).map((_, i) => ({
     y: (i + 1) * (SLOT_H + ROW_GAP) - ROW_GAP / 2,
   }));
-
   return (
-    <svg
-      className="absolute inset-0 pointer-events-none"
-      width={GRID_W}
-      height={GRID_H}
-      style={{ overflow: "visible", zIndex: 1 }}
-    >
+    <svg {...svgProps}>
       {verticals.map((v, i) => (
-        <line
-          key={`v${i}`}
-          x1={v.x} y1={0} x2={v.x} y2={GRID_H}
-          stroke={lineColor}
-          strokeWidth={1}
-        />
+        <line key={`v${i}`} x1={v.x} y1={0} x2={v.x} y2={GRID_H} stroke={lineColor} strokeWidth={1} />
       ))}
       {horizontals.map((h, i) => (
-        <line
-          key={`h${i}`}
-          x1={0} y1={h.y} x2={GRID_W} y2={h.y}
-          stroke={lineColor}
-          strokeWidth={1}
-        />
+        <line key={`h${i}`} x1={0} y1={h.y} x2={GRID_W} y2={h.y} stroke={lineColor} strokeWidth={1} />
       ))}
     </svg>
   );

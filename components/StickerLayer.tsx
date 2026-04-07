@@ -273,6 +273,7 @@ function DraggableSticker({
   const peelScale = useRef(1);   // scale captured at peel time
   const lastTapRef = useRef(0);
   const pointerDownPos = useRef({ x: 0, y: 0 });
+  const lastPointerTypeRef = useRef<string>("");
 
   // Resize drag state
   const isResizingRef = useRef(false);
@@ -440,6 +441,7 @@ function DraggableSticker({
     // MOBILE FIX: mark so ImageSlot.onClick can suppress ghost clicks that
     // arrive ~300 ms after touchend when the sticker is no longer intercepting.
     markStickerPress();
+    lastPointerTypeRef.current = e.pointerType;
     pointerDownPos.current = { x: e.clientX, y: e.clientY };
     onSelect(); // select immediately on press — instant visual feedback
   }, [stopNative, onSelect]);
@@ -452,7 +454,7 @@ function DraggableSticker({
     // "mouse") for backwards compatibility. These arrive ~0–300 ms after the
     // real touch pointerup and would reset lastTapRef, making double-tap
     // detection unreliable. Skip them on touch-capable devices.
-    if (isMobileRef.current && e.pointerType === "mouse") return;
+    if (lastPointerTypeRef.current === "touch" && e.pointerType === "mouse") return;
 
     const dx = Math.abs(e.clientX - pointerDownPos.current.x);
     const dy = Math.abs(e.clientY - pointerDownPos.current.y);

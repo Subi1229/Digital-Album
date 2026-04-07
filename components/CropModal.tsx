@@ -99,7 +99,7 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
 
             {/* Crop Area */}
             <div
-              className="relative mx-5 rounded-2xl overflow-hidden"
+              className="relative mx-5 rounded-2xl overflow-visible"
               style={{
                 height: 310,
                 background: "#111",
@@ -117,6 +117,7 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
                   onCropComplete={onCropComplete}
                   cropShape="rect"
                   showGrid
+                  restrictPosition={false}
                   style={{
                     containerStyle: { borderRadius: 16, overflow: "hidden" },
                     cropAreaStyle: {
