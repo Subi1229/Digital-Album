@@ -31,7 +31,7 @@ type AlbumMeta = {
   createdAt: number;
   isFavorite: boolean;
   lastOpenedAt: number;
-  templateId: 1 | 2 | 3 | 4;
+  templateId: 1 | 2 | 3 | 4 | 5;
   pageTemplates?: Record<number, 1 | 2 | 3 | 4>;
 };
 
@@ -76,7 +76,7 @@ function normalizeAlbums(raw: unknown): AlbumMeta[] {
         createdAt: a.createdAt,
         isFavorite: Boolean((a as any).isFavorite),
         lastOpenedAt: typeof (a as any).lastOpenedAt === "number" ? (a as any).lastOpenedAt : a.createdAt,
-        templateId: ([1, 2, 3, 4].includes((a as any).templateId) ? (a as any).templateId : 1) as 1 | 2 | 3 | 4,
+        templateId: ([1, 2, 3, 4, 5].includes((a as any).templateId) ? (a as any).templateId : 1) as 1 | 2 | 3 | 4 | 5,
         pageTemplates: (() => {
           const raw = (a as any).pageTemplates;
           if (!raw || typeof raw !== "object") return undefined;
@@ -388,7 +388,7 @@ export default function AlbumBook() {
     setShowTemplateModal(true);
   }, []);
 
-  const handleConfirmTemplate = useCallback(async (tid: 1 | 2 | 3 | 4) => {
+  const handleConfirmTemplate = useCallback(async (tid: 1 | 2 | 3 | 4 | 5) => {
     setShowTemplateModal(false);
     const nextNumber = albums.length + 1;
     const createdAt = Date.now();
@@ -524,12 +524,13 @@ export default function AlbumBook() {
   const dialogAlbumName =
     (albumDialog ? albums.find((a) => a.id === albumDialog.albumId)?.name : null) ?? "this album";
   const activeAlbumName = albums.find((a) => a.id === activeAlbumId)?.name ?? "My Photo Album";
-  const activeTemplateId = (albums.find((a) => a.id === activeAlbumId)?.templateId ?? 1) as 1 | 2 | 3 | 4;
-  const getPageTemplateId = useCallback((pageIdx: number): 1 | 2 | 3 | 4 => {
+  const activeTemplateId = (albums.find((a) => a.id === activeAlbumId)?.templateId ?? 1) as 1 | 2 | 3 | 4 | 5;
+  const activePageTemplateFallback: 1 | 2 | 3 | 4 | 5 = activeTemplateId;
+  const getPageTemplateId = useCallback((pageIdx: number): 1 | 2 | 3 | 4 | 5 => {
     const album = albums.find((a) => a.id === activeAlbumId);
-    if (album?.pageTemplates) return album.pageTemplates[pageIdx] ?? activeTemplateId;
-    return activeTemplateId;
-  }, [albums, activeAlbumId, activeTemplateId]);
+    if (album?.pageTemplates) return album.pageTemplates[pageIdx] ?? activePageTemplateFallback;
+    return activePageTemplateFallback;
+  }, [albums, activeAlbumId, activePageTemplateFallback]);
   const visibleAlbums = useMemo(() => {
     if (activeTab === "favourite") return albums.filter((a) => a.isFavorite);
     if (activeTab === "recent") return [...albums].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
@@ -1159,7 +1160,7 @@ export default function AlbumBook() {
               transition={{ type: "spring", stiffness: 280, damping: 26 }}
             >
               <div
-                className="w-[331px] max-w-[calc(100vw-2rem)] rounded-2xl px-4 py-5 sm:w-[420px] sm:px-6 sm:py-6"
+                className="w-[331px] max-w-[calc(100vw-2rem)] h-[480px] rounded-2xl px-4 py-5 sm:w-[420px] sm:px-6 sm:py-6 flex flex-col"
                 style={{ background: "#F5F5F4", boxShadow: "0 22px 48px rgba(0,0,0,0.20)" }}
               >
                 {templateModalStep === "pick" ? (
@@ -1167,8 +1168,10 @@ export default function AlbumBook() {
                     <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1C1917", fontWeight: 500 }}>
                       Choose a Template
                     </p>
-                    <div className="mt-5 grid grid-cols-2 gap-3">
-                      {([1, 2, 3, 4] as (1 | 2 | 3 | 4)[]).map((tid) => (
+                    <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-2">
+                    <div className="p-2">
+  <div className="grid grid-cols-2 gap-3">
+                      {([1, 2, 3, 4, 5] as (1 | 2 | 3 | 4 | 5)[]).map((tid) => (
                         <motion.button
                           key={tid}
                           type="button"
@@ -1196,6 +1199,8 @@ export default function AlbumBook() {
                         <span className="text-[11px] font-sans" style={{ color: "#A8A29E" }}>— choose 2–4 styles</span>
                       </motion.button>
                     </div>
+                    </div>
+                    </div>
                     <div className="mt-4">
                       <button
                         type="button"
@@ -1206,7 +1211,8 @@ export default function AlbumBook() {
                         Cancel
                       </button>
                     </div>
-                  </>
+                    
+                  </> 
                 ) : (
                   <>
                     <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1C1917", fontWeight: 500 }}>
@@ -1215,43 +1221,47 @@ export default function AlbumBook() {
                     <p className="text-center text-[12px] font-sans mt-1" style={{ color: "#A8A29E" }}>
                       Select 2–4 styles to mix across pages
                     </p>
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                      {([1, 2, 3, 4] as (1 | 2 | 3 | 4)[]).map((tid) => {
-                        const selected = pendingCustomStyles.includes(tid);
-                        return (
-                          <motion.button
-                            key={tid}
-                            type="button"
-                            className="flex flex-col items-center gap-2 rounded-xl p-3 relative"
-                            style={{
-                              background: selected ? "rgba(68,64,60,0.10)" : "rgba(255,255,255,0.90)",
-                              border: selected ? "1.5px solid #78716C" : "1.5px solid rgba(0,0,0,0.09)",
-                            }}
-                            whileTap={{ scale: 0.97 }}
-                            onClick={() => {
-                              setPendingCustomStyles((prev) =>
-                                prev.includes(tid)
-                                  ? prev.filter((s) => s !== tid)
-                                  : prev.length < 4 ? [...prev, tid] : prev
-                              );
-                            }}
-                          >
-                            <TemplatePreview templateId={tid} />
-                            <span className="text-[11px] font-sans font-medium" style={{ color: "#57534E" }}>
-                              Style {tid}
-                            </span>
-                            {selected && (
-                              <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "#44403C" }}>
-                                <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
-                                  <path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              </div>
-                            )}
-                          </motion.button>
-                        );
-                      })}
+                    <div className="mt-4 flex-1 overflow-y-auto overflow-x-hidden pr-2">
+                      <div className="p-2">
+                        <div className="grid grid-cols-2 gap-3">
+                          {([1, 2, 3, 4] as (1 | 2 | 3 | 4)[]).map((tid) => {
+                            const selected = pendingCustomStyles.includes(tid);
+                            return (
+                              <motion.button
+                                key={tid}
+                                type="button"
+                                className="flex flex-col items-center gap-2 rounded-xl p-3 relative"
+                                style={{
+                                  background: selected ? "rgba(68,64,60,0.10)" : "rgba(255,255,255,0.90)",
+                                  border: selected ? "1.5px solid #78716C" : "1.5px solid rgba(0,0,0,0.09)",
+                                }}
+                                whileTap={{ scale: 0.97 }}
+                                onClick={() => {
+                                  setPendingCustomStyles((prev) =>
+                                    prev.includes(tid)
+                                      ? prev.filter((s) => s !== tid)
+                                      : prev.length < 4 ? [...prev, tid] : prev
+                                  );
+                                }}
+                              >
+                                <TemplatePreview templateId={tid} />
+                                <span className="text-[11px] font-sans font-medium" style={{ color: "#57534E" }}>
+                                  Style {tid}
+                                </span>
+                                {selected && (
+                                  <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "#44403C" }}>
+                                    <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                                      <path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                  </div>
+                                )}
+                              </motion.button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2">
+                    <div className="mt-4 grid grid-cols-2 gap-2 shrink-0">
                       <button
                         type="button"
                         onClick={() => setTemplateModalStep("pick")}
@@ -1294,12 +1304,13 @@ export default function AlbumBook() {
         onStickersChange={handleStickersChange}
         libraryStickers={libraryStickers}
         onLibraryChange={handleLibraryChange}
+        showWashiTab={getPageTemplateId(stickerPanelPage) === 5}
       />
     </div>
   );
 }
 
-function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 }) {
+function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 | 5 }) {
   const W = 90;
   const H = 120;
   const px = 8;
@@ -1311,6 +1322,14 @@ function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 }) {
   const slotBg = "rgb(250,250,249)";
   type R = { x: number; y: number; w: number; h: number };
   const slots: R[] = [];
+
+  if (templateId === 5) {
+    return (
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <rect width={W} height={H} rx={5} fill="#F3F2F0" />
+      </svg>
+    );
+  }
 
   if (templateId === 1) {
     const sw = (gw - gap * 2) / 3;

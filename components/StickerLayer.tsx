@@ -109,7 +109,7 @@ function PeelAnimation({ sticker, originX, originY, peelScale = 1, onDone }: Pee
     let timerID: ReturnType<typeof setTimeout>;
     let startTime: number | null = null;
     const PEEL_DURATION = 820;  // ms
-    const VANISH_DELAY = 5000; // ms
+    const VANISH_DELAY = 0; // ms
 
     const tick = (timestamp: number) => {
       if (startTime === null) startTime = timestamp;
@@ -271,6 +271,9 @@ function DraggableSticker({
   const [isPeeling, setIsPeeling] = useState(false);
   const peelOrigin = useRef({ x: 0, y: 0 });
   const peelScale = useRef(1);   // scale captured at peel time
+  const isWashiTape =
+    sticker.dataUrl.includes("width%3D%22480%22") &&
+    sticker.dataUrl.includes("height%3D%22112%22");
   const lastTapRef = useRef(0);
   const pointerDownPos = useRef({ x: 0, y: 0 });
   const lastPointerTypeRef = useRef<string>("");
@@ -530,8 +533,10 @@ function DraggableSticker({
       onPointerUp={handlePointerUp}
       onDragEnd={handleDragEnd}
       // Shadow lift instead of scale-on-drag to avoid conflicting with resize scale
-      whileDrag={{ cursor: "grabbing", zIndex: 20, filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.28))" }}
-      whileHover={{ filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.15))" }}
+      whileDrag={isWashiTape
+        ? { cursor: "grabbing", zIndex: 20 }
+        : { cursor: "grabbing", zIndex: 20, filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.28))" }}
+      whileHover={isWashiTape ? {} : { filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.15))" }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
       exit={{ opacity: 0, scale: 0, transition: { duration: 0 } }}
     >

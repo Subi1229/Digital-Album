@@ -92,7 +92,7 @@ export interface AlbumPageProps {
   /** Called when the sticker emoji button is tapped – parent opens StickerPanel */
   onStickerPanelOpen: (pageIndex: number) => void;
   pageNumber: number;
-  templateId?: 1 | 2 | 3 | 4;
+  templateId?: 1 | 2 | 3 | 4 | 5;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -112,6 +112,75 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
     },
     ref
   ) => {
+    if (templateId === 5) {
+      return (
+        <div
+          ref={ref}
+          className="album-page"
+          style={{
+            width: PAGE_W,
+            height: PAGE_H,
+            background: "#F3F2F0",
+            position: "relative",
+            overflow: "hidden",
+            flexShrink: 0,
+            isolation: "isolate",
+          }}
+        >
+          <motion.button
+            onClick={() => onStickerPanelOpen(pageIndex)}
+            className="absolute flex items-center justify-center rounded-full"
+            style={{
+              top: 14,
+              right: isLeft ? 16 : undefined,
+              left: isLeft ? undefined : 16,
+              width: 32,
+              height: 32,
+              background: "rgba(255,255,255,0.94)",
+              boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
+              border: "1.5px solid rgba(0,0,0,0.05)",
+              zIndex: 5,
+            }}
+            whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
+            whileTap={{ scale: 0.92 }}
+            title="Sticker library"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#79716B"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+              <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="2.5" />
+              <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="2.5" />
+            </svg>
+          </motion.button>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 50,
+              pointerEvents: "none",
+            }}
+          >
+            <StickerLayer
+              stickers={stickers}
+              pageIndex={pageIndex}
+              containerWidth={PAGE_W}
+              containerHeight={PAGE_H}
+              onStickersChange={onStickersChange}
+            />
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         ref={ref}

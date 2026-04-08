@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sticker, LibrarySticker } from "@/lib/types";
 import {
@@ -31,7 +31,97 @@ interface StickerPanelProps {
   onStickersChange: (stickers: Sticker[]) => void;
   libraryStickers: LibrarySticker[];
   onLibraryChange: (ls: LibrarySticker[]) => void;
+  showWashiTab?: boolean;
 }
+
+type WashiDef = {
+  id: string;
+  src: string;
+};
+
+function makeWashiDataUrl(
+  base: string,
+  pattern: "none" | "grid" | "dots" | "stripes" | "flowers",
+  accent: string,
+  opacity = 0.82,
+  variant = 1
+): string {
+  const rough = (variant % 7) + 1;
+  const seedA = 11 + variant * 3;
+  const seedB = 21 + variant * 5;
+  const leftInset = 12 + (variant % 6) * 2;
+  const rightInset = 462 - (variant % 5) * 2;
+  const topY = 14 + (variant % 4);
+  const bottomY = 96 - (variant % 3);
+  const topDip = 7 + (variant % 5);
+  const bottomRise = 5 + (variant % 6);
+  const edgeStrokeOpacity = 0.18 + (variant % 4) * 0.04;
+
+  const tapePath = `M${leftInset},${topY}
+    C${24 + rough},${topY - 8} ${43 + rough},${topY - 8} ${58 + rough},${topY - 2}
+    C${82 + rough},${topY + topDip} ${116 + rough},${topY + 1} ${142 + rough},${topY - 3}
+    C${176 + rough},${topY - 9} ${206 + rough},${topY + 5} ${236 + rough},${topY}
+    C${271 + rough},${topY - 6} ${301 + rough},${topY - 4} ${329 + rough},${topY + 2}
+    C${357 + rough},${topY + 8} ${390 + rough},${topY - 2} ${418 + rough},${topY}
+    C${438 + rough},${topY + 1} ${451 + rough},${topY + 7} ${rightInset},${topY + 2}
+    L${rightInset},${bottomY}
+    C${451 + rough},${bottomY + 7} ${437 + rough},${bottomY + 1} ${416 + rough},${bottomY + 3}
+    C${386 + rough},${bottomY + 6} ${355 + rough},${bottomY - 2} ${328 + rough},${bottomY + 1}
+    C${298 + rough},${bottomY + 4} ${269 + rough},${bottomY + 10} ${236 + rough},${bottomY + 4}
+    C${206 + rough},${bottomY} ${175 + rough},${bottomY + 7} ${142 + rough},${bottomY + 2}
+    C${117 + rough},${bottomY - 1} ${82 + rough},${bottomY + bottomRise} ${58 + rough},${bottomY}
+    C${42 + rough},${bottomY - 3} ${24 + rough},${bottomY - 1} ${leftInset},${bottomY - 6}
+    Z`;
+
+  const patternMarkup =
+    pattern === "grid"
+      ? `<pattern id="p" width="${20 + (variant % 5)}" height="${12 + (variant % 4)}" patternUnits="userSpaceOnUse"><path d="M0 ${(6 + variant) % 9}H26M${10 + (variant % 6)} 0V16" stroke="${accent}" stroke-width="${1 + (variant % 2) * 0.2}" opacity="0.55"/></pattern><path d="${tapePath}" fill="url(#p)"/>`
+      : pattern === "dots"
+        ? `<pattern id="p" width="${18 + (variant % 6)}" height="${11 + (variant % 5)}" patternUnits="userSpaceOnUse"><circle cx="${4 + (variant % 3)}" cy="4" r="1.8" fill="${accent}" opacity="0.65"/><circle cx="${14 + (variant % 4)}" cy="${7 + (variant % 3)}" r="1.5" fill="${accent}" opacity="0.48"/></pattern><path d="${tapePath}" fill="url(#p)"/>`
+        : pattern === "stripes"
+          ? `<pattern id="p" width="${16 + (variant % 4)}" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(${-12 + (variant % 7)})"><rect width="${8 + (variant % 3)}" height="18" fill="${accent}" opacity="0.34"/></pattern><path d="${tapePath}" fill="url(#p)"/>`
+          : pattern === "flowers"
+            ? `<pattern id="p" width="${30 + (variant % 8)}" height="${18 + (variant % 5)}" patternUnits="userSpaceOnUse"><circle cx="9" cy="8" r="3.1" fill="${accent}" opacity="0.7"/><circle cx="13" cy="8" r="3.1" fill="${accent}" opacity="0.7"/><circle cx="11" cy="5.2" r="3.1" fill="${accent}" opacity="0.7"/><circle cx="11" cy="10.8" r="3.1" fill="${accent}" opacity="0.7"/><circle cx="11" cy="8" r="1.5" fill="#fff" opacity="0.9"/></pattern><path d="${tapePath}" fill="url(#p)"/>`
+            : "";
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="112" viewBox="0 0 480 112">
+<defs>
+<filter id="texA"><feTurbulence baseFrequency="${0.75 + (variant % 4) * 0.08}" numOctaves="2" seed="${seedA}" type="fractalNoise"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="table" tableValues="0 0.09"/></feComponentTransfer></filter>
+<filter id="texB"><feTurbulence baseFrequency="${0.22 + (variant % 5) * 0.03}" numOctaves="1" seed="${seedB}" type="fractalNoise"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="table" tableValues="0 0.06"/></feComponentTransfer></filter>
+</defs>
+<g>
+<path d="${tapePath}" fill="${base}" fill-opacity="${opacity}"/>
+${patternMarkup}
+<path d="${tapePath}" fill="#fff" opacity="0.07" filter="url(#texA)"/>
+<path d="${tapePath}" fill="#000" opacity="0.04" filter="url(#texB)"/>
+<path d="${tapePath}" fill="none" stroke="#fff" stroke-opacity="${edgeStrokeOpacity.toFixed(2)}" stroke-width="1.8"/>
+</g>
+</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+const WASHI_TAPES: WashiDef[] = [
+  { id: "washi-1", src: makeWashiDataUrl("#F6D75A", "flowers", "#FFFFFF", 0.84, 1) },
+  { id: "washi-2", src: makeWashiDataUrl("#F4C7D6", "dots", "#FFFFFF", 0.82, 2) },
+  { id: "washi-3", src: makeWashiDataUrl("#D9E7B4", "grid", "#6B8A55", 0.8, 3) },
+  { id: "washi-4", src: makeWashiDataUrl("#D6C6EF", "stripes", "#9C86CA", 0.82, 4) },
+  { id: "washi-5", src: makeWashiDataUrl("#E9CFB8", "grid", "#B3977D", 0.78, 5) },
+  { id: "washi-6", src: makeWashiDataUrl("#E85A5A", "flowers", "#FFE5E5", 0.84, 6) },
+  { id: "washi-7", src: makeWashiDataUrl("#F0A0BC", "dots", "#FFF2F7", 0.82, 7) },
+  { id: "washi-8", src: makeWashiDataUrl("#B9D9EC", "grid", "#6BA4C8", 0.8, 8) },
+  { id: "washi-9", src: makeWashiDataUrl("#AFC9E6", "stripes", "#6C8FB2", 0.8, 9) },
+  { id: "washi-10", src: makeWashiDataUrl("#A6D8C8", "dots", "#F2FFFB", 0.8, 10) },
+  { id: "washi-11", src: makeWashiDataUrl("#CDB4DB", "flowers", "#FFF8FF", 0.84, 11) },
+  { id: "washi-12", src: makeWashiDataUrl("#F5B86B", "grid", "#C7812D", 0.82, 12) },
+  { id: "washi-13", src: makeWashiDataUrl("#D2A67F", "stripes", "#8F6747", 0.82, 13) },
+  { id: "washi-14", src: makeWashiDataUrl("#E8A3A3", "dots", "#FFF5F5", 0.82, 14) },
+  { id: "washi-15", src: makeWashiDataUrl("#F5D2A8", "none", "#FFFFFF", 0.78, 15) },
+  { id: "washi-16", src: makeWashiDataUrl("#F7E8A7", "grid", "#D3B860", 0.8, 16) },
+  { id: "washi-17", src: makeWashiDataUrl("#A9C08B", "stripes", "#6F8555", 0.8, 17) },
+  { id: "washi-18", src: makeWashiDataUrl("#8BB5E8", "dots", "#EAF4FF", 0.78, 18) },
+  { id: "washi-19", src: makeWashiDataUrl("#B58BC7", "flowers", "#F6E9FF", 0.8, 19) },
+  { id: "washi-20", src: makeWashiDataUrl("#D76060", "grid", "#7B2626", 0.82, 20) },
+];
 
 export default function StickerPanel({
   isOpen,
@@ -41,12 +131,18 @@ export default function StickerPanel({
   onStickersChange,
   libraryStickers,
   onLibraryChange,
+  showWashiTab = false,
 }: StickerPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<ProcessingStep>("idle");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
+  const [activeTab, setActiveTab] = useState<"stickers" | "washi">("stickers");
+
+  useEffect(() => {
+    if (!isOpen || !showWashiTab) setActiveTab("stickers");
+  }, [isOpen, showWashiTab]);
 
   // ── Place sticker (from library tap or after upload) ─────────────────────
   // saveToLibrary=true when it's a freshly processed upload (not yet catalogued)
@@ -371,8 +467,37 @@ export default function StickerPanel({
                 </div>
               )}
 
+              {/* ── Tabs (Moodboard only) ── */}
+              {step === "idle" && showWashiTab && (
+                <div
+                  className="mb-3 p-1 rounded-xl grid grid-cols-2 gap-1"
+                  style={{ background: "rgba(0,0,0,0.04)" }}
+                >
+                  <button
+                    onClick={() => setActiveTab("stickers")}
+                    className="py-2 rounded-lg text-xs font-sans font-medium"
+                    style={{
+                      background: activeTab === "stickers" ? "#292524" : "transparent",
+                      color: activeTab === "stickers" ? "#fff" : "#57534E",
+                    }}
+                  >
+                    Stickers
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("washi")}
+                    className="py-2 rounded-lg text-xs font-sans font-medium"
+                    style={{
+                      background: activeTab === "washi" ? "#292524" : "transparent",
+                      color: activeTab === "washi" ? "#fff" : "#57534E",
+                    }}
+                  >
+                    Washi
+                  </button>
+                </div>
+              )}
+
               {/* ── Upload button ── */}
-              {step === "idle" && (
+              {step === "idle" && activeTab === "stickers" && (
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-xl mb-4 font-sans text-sm font-medium"
@@ -393,13 +518,43 @@ export default function StickerPanel({
               )}
 
               {/* ── Library grid ── */}
-              {libraryStickers.length === 0 && step === "idle" ? (
+              {activeTab === "stickers" && libraryStickers.length === 0 && step === "idle" ? (
                 <div className="text-center py-6">
                   <div className="text-3xl mb-2">🌟</div>
                   <p className="text-xs font-sans" style={{ color: "#A8A29E" }}>
                     No stickers yet. Upload one above!
                   </p>
                 </div>
+              ) : activeTab === "washi" && step === "idle" ? (
+                <>
+                  <p className="text-xs font-sans font-medium mb-2.5" style={{ color: "#A8A29E" }}>
+                    Tap to add tape
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {WASHI_TAPES.map((wt) => (
+                      <motion.button
+                        key={wt.id}
+                        onClick={() => placeSticker(wt.src, false)}
+                        className="w-full rounded-xl overflow-hidden flex items-center justify-center p-2"
+                        style={{
+                          background: "repeating-conic-gradient(#f0f0f0 0% 25%, white 0% 50%) 0 0 / 10px 10px",
+                          border: "1px solid rgba(0,0,0,0.08)",
+                          aspectRatio: "2.8 / 1",
+                        }}
+                        whileHover={{ scale: 1.04 }}
+                        whileTap={{ scale: 0.95 }}
+                      >
+                        <img
+                          src={wt.src}
+                          alt="washi tape"
+                          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                          draggable={false}
+                          loading="lazy"
+                        />
+                      </motion.button>
+                    ))}
+                  </div>
+                </>
               ) : (
                 step === "idle" && (
                   <>
