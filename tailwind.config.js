@@ -8,11 +8,11 @@ module.exports = {
     extend: {
       fontFamily: {
         serif: ["'Playfair Display'", "Georgia", "serif"],
-        sans:  ["Inter", "system-ui", "sans-serif"],
+        sans: ["Inter", "system-ui", "sans-serif"],
       },
       colors: {
         stone: {
-          50:  "#FAFAF9",
+          50: "#FAFAF9",
           100: "#F5F5F4",
           200: "#E7E5E4",
           300: "#D6D3D1",

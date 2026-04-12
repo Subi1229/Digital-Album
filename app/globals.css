@@ -4,6 +4,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Design tokens ──────────────────────────────────────────── */
+:root {
+  --color-bg: #F5EFE6;
+  --color-surface: #EDE0D0;
+  --color-text-primary: #1A1209;
+  --color-text-secondary: #5C4A32;
+  --color-cta-bg: #1e1e1e;
+  --color-cta-text: #F5EFE6;
+  --color-accent: #8B6343;
+}
+
 /* ── Reset ─────────────────────────────────────────────────── */
 *,
 *::before,
@@ -38,6 +49,8 @@ body {
 .album-flip .stf__item {
   overflow: hidden;
   isolation: isolate;
+  background: #FFFFFF;
+  transform: translateZ(0);
 }
 
 /* Page corner hover cue */
@@ -98,12 +111,31 @@ input[type='range']::-moz-range-thumb {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f0efee;
+  background: #EDE0D0;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d6d3d1;
+  background: #8B6343;
   border-radius: 3px;
+}
+
+/* ── Focus ring ─────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #1e1e1e;
+  outline-offset: 2px;
+}
+
+/* ── Primary button ─────────────────────────────────────────── */
+.btn-primary,
+[data-primary] {
+  background: #1e1e1e;
+  color: #F5EFE6;
+  border: none;
+}
+
+.btn-primary:hover,
+[data-primary]:hover {
+  background: #3a3a3a;
 }
 
 /* ── Prevent text selection during page flip ───────────────── */

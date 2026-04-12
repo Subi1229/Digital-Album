@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useLayoutEffect, useCallback, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useCallback, useRef, useState, startTransition } from "react";
 import {
   motion,
   AnimatePresence,
@@ -10,6 +10,10 @@ import { Sticker } from "@/lib/types";
 import { saveSticker, deleteSticker } from "@/lib/db";
 // MOBILE FIX: shared flag so ImageSlot can suppress ghost clicks from sticker taps
 import { markStickerPress } from "@/lib/stickerInteraction";
+
+// ── Rotate zone constants (mirrors MoodboardImageLayer) ──────────────────────
+const ROT_SIZE = 26;  // invisible rotate hit-area size (px)
+const ROT_OFF  = 30;  // distance outside corner (positive = outside element)
 
 // ─── StickerLayer ─────────────────────────────────────────────────────────────
 interface StickerLayerProps {
@@ -26,6 +30,17 @@ export default function StickerLayer(props: StickerLayerProps) {
 
   // ── Selection state — only one sticker selected at a time ────────────────
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // ── Active manipulation — blocks pointer events on all other stickers ─────
+  const [activeId, setActiveId] = useState<string | null>(null);
+  // ── Z-order map: bumped on each selection so last-selected is always on top ─
+  const [zOrders, setZOrders] = useState<Record<string, number>>({});
+  const zCounterRef = useRef(0);
+
+  const handleSelect = useCallback((id: string) => {
+    setSelectedId(id);
+    zCounterRef.current += 1;
+    setZOrders((prev) => ({ ...prev, [id]: zCounterRef.current }));
+  }, []);
 
   // Deselect on any tap that lands outside a sticker element.
   // Uses document capture phase (fires before any element handler) and checks
@@ -65,7 +80,11 @@ export default function StickerLayer(props: StickerLayerProps) {
             allStickers={stickers}
             onStickersChange={onStickersChange}
             isSelected={selectedId === sticker.id}
-            onSelect={() => setSelectedId(sticker.id)}
+            onSelect={() => handleSelect(sticker.id)}
+            zOrder={zOrders[sticker.id] ?? 0}
+            isBlocked={activeId !== null && activeId !== sticker.id}
+            onManipulateStart={() => startTransition(() => setActiveId(sticker.id))}
+            onManipulateEnd={() => startTransition(() => setActiveId(null))}
           />
         ))}
       </AnimatePresence>
@@ -109,7 +128,7 @@ function PeelAnimation({ sticker, originX, originY, peelScale = 1, onDone }: Pee
     let timerID: ReturnType<typeof setTimeout>;
     let startTime: number | null = null;
     const PEEL_DURATION = 820;  // ms
-    const VANISH_DELAY = 0; // ms
+    const VANISH_DELAY = 5000; // ms
 
     const tick = (timestamp: number) => {
       if (startTime === null) startTime = timestamp;
@@ -192,7 +211,7 @@ function PeelAnimation({ sticker, originX, originY, peelScale = 1, onDone }: Pee
         // of the double-tap — prevents the "snap back to base size" glitch.
         // transformOrigin matches DraggableSticker so position doesn't jump.
         transform:       `translate(${originX}px, ${originY}px) rotate(${sticker.rotation}deg) scale(${peelScale})`,
-        transformOrigin: "top left",
+        transformOrigin: "center center",
         width:           sticker.width,
         height:          sticker.height,
         // MOBILE FIX: "auto" instead of "none" so the ~300 ms ghost click that
@@ -251,6 +270,10 @@ interface DraggableStickerProps {
   onStickersChange: (s: Sticker[]) => void;
   isSelected: boolean;
   onSelect: () => void;
+  zOrder: number;
+  isBlocked: boolean;
+  onManipulateStart: () => void;
+  onManipulateEnd: () => void;
 }
 
 function DraggableSticker({
@@ -261,7 +284,14 @@ function DraggableSticker({
   onStickersChange,
   isSelected,
   onSelect,
+  zOrder,
+  isBlocked,
+  onManipulateStart,
+  onManipulateEnd,
 }: DraggableStickerProps) {
+  // Tight content bounds in element-px space (non-transparent pixel area of the PNG)
+  const [contentBounds, setContentBounds] = useState<{ left: number; top: number; bw: number; bh: number } | null>(null);
+
   const x = useMotionValue(sticker.x * containerWidth);
   const y = useMotionValue(sticker.y * containerHeight);
   // scaleMotion drives CSS transform scale so it composes cleanly with
@@ -271,19 +301,23 @@ function DraggableSticker({
   const [isPeeling, setIsPeeling] = useState(false);
   const peelOrigin = useRef({ x: 0, y: 0 });
   const peelScale = useRef(1);   // scale captured at peel time
-  const isWashiTape =
-    sticker.dataUrl.includes("width%3D%22480%22") &&
-    sticker.dataUrl.includes("height%3D%22112%22");
   const lastTapRef = useRef(0);
   const pointerDownPos = useRef({ x: 0, y: 0 });
   const lastPointerTypeRef = useRef<string>("");
 
   // Resize drag state
   const isResizingRef = useRef(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const resizeStartRef = useRef({ clientX: 0, clientY: 0, scale: 1 });
 
+  // Rotate state (reuses moodboard angle-from-center logic)
+  const rotateMotion = useMotionValue(sticker.rotation ?? 0);
+  const rotateActiveRef = useRef<{ cx: number; cy: number; startAngle: number; startRot: number } | null>(null);
+  const [isRotating, setIsRotating] = useState(false);
+
   // ── Mobile detection (client-only) ──────────────────────────────────────
-  // Used to: skip mouse-compat pointer events, enlarge handles, enable pinch.
+  // Used to: skip mouse-compat pointer events, enable pinch.
   const isMobileRef = useRef(false);
   useLayoutEffect(() => {
     isMobileRef.current =
@@ -292,6 +326,16 @@ function DraggableSticker({
 
   // ── Ref to the DOM node — needed for native touch listeners ─────────────
   const divRef = useRef<HTMLDivElement>(null);
+
+  // ── Pivot ref: 1×1 div at TL corner gives exact screen position of the
+  //    rotation pivot (transformOrigin:"top left") via getBoundingClientRect()
+  const pivotRef = useRef<HTMLDivElement>(null);
+
+  // ── Stable refs for manipulate callbacks (safe in useEffect) ─────────────
+  const onManipulateStartRef = useRef(onManipulateStart);
+  const onManipulateEndRef   = useRef(onManipulateEnd);
+  onManipulateStartRef.current = onManipulateStart;
+  onManipulateEndRef.current   = onManipulateEnd;
 
   // ── Refs so event handlers always see current prop values ────────────────
   // (avoids adding sticker/allStickers/onStickersChange to every useEffect dep)
@@ -302,56 +346,60 @@ function DraggableSticker({
   allStickersR.current = allStickers;
   onChangeRef.current  = onStickersChange;
 
-  // ── Pinch-to-resize (mobile) ─────────────────────────────────────────────
-  // Attach native touch listeners directly on the element so stopImmediatePropagation
-  // fires at the element level — preventing react-pageflip's ancestor listener from
-  // seeing the touch and triggering a page flip, while keeping pointer events alive
-  // (we do NOT call preventDefault on touchstart, which would cancel pointer events).
-  const pinchRef = useRef<{ dist: number; scale: number } | null>(null);
+  // ── Pinch-to-resize + two-finger rotate (mobile) ────────────────────────────
+  const pinchRef = useRef<{ dist: number; angle0: number; scale: number; rot0: number } | null>(null);
+  // Tracks whether a two-finger gesture is active so drag is suppressed
+  const [isGesturing, setIsGesturing] = useState(false);
 
   useEffect(() => {
     const el = divRef.current;
     if (!el) return;
 
     const onTouchStart = (e: TouchEvent) => {
-      // Stop page-flip without cancelling pointer events.
-      // stopImmediatePropagation prevents bubbling to react-pageflip on ancestors;
-      // omitting preventDefault keeps the pointer event sequence alive so Framer
-      // Motion drag still works via pointerdown/pointermove/pointerup.
       e.stopImmediatePropagation();
-
       if (e.touches.length === 2) {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
-        pinchRef.current = { dist: Math.hypot(dx, dy), scale: scaleMotion.get() };
+        pinchRef.current = {
+          dist:   Math.hypot(dx, dy),
+          angle0: Math.atan2(dy, dx),
+          scale:  scaleMotion.get(),
+          rot0:   rotateMotion.get(),
+        };
+        setIsGesturing(true);
+        onManipulateStartRef.current();
       } else {
         pinchRef.current = null;
+        setIsGesturing(false);
       }
     };
 
     const onTouchMove = (e: TouchEvent) => {
       if (!pinchRef.current || e.touches.length !== 2) return;
-      // Prevent scroll/page during a two-finger pinch on the sticker.
       e.preventDefault();
       e.stopImmediatePropagation();
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const ratio = Math.hypot(dx, dy) / pinchRef.current.dist;
+      const dx    = e.touches[0].clientX - e.touches[1].clientX;
+      const dy    = e.touches[0].clientY - e.touches[1].clientY;
+      const ratio  = Math.hypot(dx, dy) / pinchRef.current.dist;
+      const dAngle = (Math.atan2(dy, dx) - pinchRef.current.angle0) * (180 / Math.PI);
       scaleMotion.set(Math.max(0.25, Math.min(5, pinchRef.current.scale * ratio)));
+      rotateMotion.set(pinchRef.current.rot0 + dAngle);
     };
 
     const onTouchEnd = async () => {
       if (!pinchRef.current) return;
       const newScale = scaleMotion.get();
+      const newRot   = rotateMotion.get();
       pinchRef.current = null;
-      // Persist the new scale
-      const updated = { ...stickerRef.current, scale: newScale };
+      setIsGesturing(false);
+      onManipulateEndRef.current();
+      const updated = { ...stickerRef.current, scale: newScale, rotation: newRot };
       onChangeRef.current(allStickersR.current.map((s) => s.id === updated.id ? updated : s));
       await saveSticker(updated);
     };
 
     el.addEventListener("touchstart",  onTouchStart,  { passive: true  });
-    el.addEventListener("touchmove",   onTouchMove,   { passive: false }); // needs preventDefault
+    el.addEventListener("touchmove",   onTouchMove,   { passive: false });
     el.addEventListener("touchend",    onTouchEnd,    { passive: true  });
     el.addEventListener("touchcancel", onTouchEnd,    { passive: true  });
 
@@ -361,7 +409,7 @@ function DraggableSticker({
       el.removeEventListener("touchend",    onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, [scaleMotion]); // only scaleMotion needed — sticker/allStickers accessed via refs
+  }, [scaleMotion, rotateMotion]); // eslint-disable-line
 
   useEffect(() => {
     x.set(sticker.x * containerWidth);
@@ -373,20 +421,31 @@ function DraggableSticker({
     scaleMotion.set(sticker.scale ?? 1);
   }, [sticker.scale]); // eslint-disable-line
 
+  // Keep rotateMotion in sync when the persisted sticker.rotation changes (e.g. page load)
+  useEffect(() => {
+    rotateMotion.set(sticker.rotation ?? 0);
+  }, [sticker.rotation]); // eslint-disable-line
+
   const handleDragEnd = useCallback(async () => {
     const rawX = x.get();
     const rawY = y.get();
     const curScale = scaleMotion.get();
-    // Clamp using the visual (scaled) footprint so the sticker stays on-page
-    const clampedX = Math.max(0, Math.min(containerWidth - sticker.width * curScale, rawX));
-    const clampedY = Math.max(0, Math.min(containerHeight - sticker.height * curScale, rawY));
+    // With transformOrigin:"center center", the visual center = (x + w/2, y + h/2)
+    // and stays fixed regardless of scale. Clamp so the center stays inside the page.
+    const hw = sticker.width  / 2;
+    const hh = sticker.height / 2;
+    const clampedX = Math.max(-hw, Math.min(containerWidth  - hw, rawX));
+    const clampedY = Math.max(-hh, Math.min(containerHeight - hh, rawY));
     x.set(clampedX);
     y.set(clampedY);
     const nx = clampedX / containerWidth;
     const ny = clampedY / containerHeight;
-    onStickersChange(allStickers.map((s) => s.id === sticker.id ? { ...s, x: nx, y: ny } : s));
+    startTransition(() => {
+      onStickersChange(allStickers.map((s) => s.id === sticker.id ? { ...s, x: nx, y: ny } : s));
+    });
     await saveSticker({ ...sticker, x: nx, y: ny });
-  }, [x, y, sticker, containerWidth, containerHeight, allStickers, onStickersChange, scaleMotion]);
+    onManipulateEnd();
+  }, [x, y, sticker, containerWidth, containerHeight, allStickers, onStickersChange, scaleMotion, onManipulateEnd]);
 
   const handleDelete = useCallback(async () => {
     // Library items are persisted in the dedicated library store.
@@ -395,18 +454,36 @@ function DraggableSticker({
     await deleteSticker(sticker.id);
   }, [sticker.id, allStickers, onStickersChange]);
 
-  // ── Resize handlers ─────────────────────────────────────────────────────────
-  // Pointer is captured on the handle so moves are tracked globally (even if
-  // the pointer moves fast outside the handle bounds).
-  const handleResizePointerDown = useCallback((e: React.PointerEvent) => {
+  // ── Corner resize handlers (desktop) ────────────────────────────────────────
+  // Invisible corner zones capture pointer events so FM drag never starts —
+  // stopImmediatePropagation on the native event prevents Framer Motion from
+  // seeing the pointer sequence. setPointerCapture keeps events arriving even
+  // when the pointer moves outside the corner zone during a fast resize gesture.
+  const handleCornerPointerDown = useCallback((e: React.PointerEvent) => {
+    // Double-tap on a corner zone should still trigger peel (same as body double-tap)
+    const now = Date.now();
+    const delta = now - lastTapRef.current;
+    const maxGap = e.pointerType === "touch" ? 600 : 350;
+    if (delta < maxGap && delta > 30) {
+      e.stopPropagation();
+      (e.nativeEvent as Event).stopImmediatePropagation();
+      peelOrigin.current = { x: x.get(), y: y.get() };
+      peelScale.current = scaleMotion.get();
+      deleteSticker(sticker.id);
+      setIsPeeling(true);
+      return;
+    }
+    lastTapRef.current = now;
     e.stopPropagation();
     (e.nativeEvent as Event).stopImmediatePropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     isResizingRef.current = true;
+    setIsResizing(true);
+    onManipulateStart();
     resizeStartRef.current = { clientX: e.clientX, clientY: e.clientY, scale: scaleMotion.get() };
   }, [scaleMotion]);
 
-  const handleResizePointerMove = useCallback((e: React.PointerEvent) => {
+  const handleCornerPointerMove = useCallback((e: React.PointerEvent) => {
     if (!isResizingRef.current) return;
     const dx = e.clientX - resizeStartRef.current.clientX;
     const dy = e.clientY - resizeStartRef.current.clientY;
@@ -417,15 +494,54 @@ function DraggableSticker({
     scaleMotion.set(newScale);
   }, [sticker.width, scaleMotion]);
 
-  const handleResizePointerUp = useCallback(async (e: React.PointerEvent) => {
+  const handleCornerPointerUp = useCallback(async (e: React.PointerEvent) => {
     e.stopPropagation();
     if (!isResizingRef.current) return;
     isResizingRef.current = false;
+    setIsResizing(false);
+    onManipulateEnd();
     const newScale = scaleMotion.get();
     const updated = { ...sticker, scale: newScale };
     onStickersChange(allStickers.map((s) => s.id === sticker.id ? updated : s));
     await saveSticker(updated);
   }, [sticker, allStickers, onStickersChange, scaleMotion]);
+
+  // ── Rotate handlers (reuses moodboard angle-from-center logic) ─────────────
+  const handleRotatePointerDown = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation();
+    (e.nativeEvent as Event).stopImmediatePropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    // Use the element's bounding rect CENTER — with transformOrigin:"center center"
+    // this point stays fixed during rotation so angle math never drifts.
+    const rect = divRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const cx = rect.left + rect.width  / 2;
+    const cy = rect.top  + rect.height / 2;
+    const startAngle = Math.atan2(e.clientY - cy, e.clientX - cx) * (180 / Math.PI);
+    rotateActiveRef.current = { cx, cy, startAngle, startRot: rotateMotion.get() };
+    setIsRotating(true);
+    onManipulateStart();
+  }, [rotateMotion]);
+
+  const handleRotatePointerMove = useCallback((e: React.PointerEvent) => {
+    const act = rotateActiveRef.current;
+    if (!act) return;
+    const ang = Math.atan2(e.clientY - act.cy, e.clientX - act.cx) * (180 / Math.PI);
+    rotateMotion.set(act.startRot + (ang - act.startAngle));
+  }, [rotateMotion]);
+
+  const handleRotatePointerUp = useCallback(async (e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (!rotateActiveRef.current) return;
+    rotateActiveRef.current = null;
+    setIsRotating(false);
+    onManipulateEnd();
+    const newRotation = rotateMotion.get();
+    const updated = { ...stickerRef.current, rotation: newRotation };
+    onChangeRef.current(allStickersR.current.map((s) => s.id === updated.id ? updated : s));
+    await saveSticker(updated);
+  }, [rotateMotion]);
 
   // ── Prevent react-pageflip from stealing drag events (desktop) ────────────
   // On desktop, react-pageflip attaches a native mousedown listener. React's
@@ -448,6 +564,17 @@ function DraggableSticker({
     pointerDownPos.current = { x: e.clientX, y: e.clientY };
     onSelect(); // select immediately on press — instant visual feedback
   }, [stopNative, onSelect]);
+
+  // For large stickers: content-area child handles selection but does NOT call
+  // stopImmediatePropagation on the native event so it still bubbles to the
+  // motion.div where Framer Motion's drag listener picks it up.
+  const handlePointerDownContent = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation(); // stops React synthetic bubbling only
+    markStickerPress();
+    lastPointerTypeRef.current = e.pointerType;
+    pointerDownPos.current = { x: e.clientX, y: e.clientY };
+    onSelect();
+  }, [onSelect]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (isPeeling) return;
@@ -473,6 +600,9 @@ function DraggableSticker({
       // PeelAnimation starts at the exact same visual state — no size jump.
       peelOrigin.current = { x: x.get(), y: y.get() };
       peelScale.current = scaleMotion.get();
+      // Delete from IDB immediately so a refresh during the peel animation
+      // does not restore the sticker. React state is kept alive for the animation.
+      deleteSticker(sticker.id);
       setIsPeeling(true);
     }
     lastTapRef.current = now;
@@ -491,9 +621,14 @@ function DraggableSticker({
     );
   }
 
-  // Resize handle dimensions — larger on touch devices for easier tapping.
-  const handleSize   = isMobileRef.current ? 28 : 16;
-  const handleOffset = -(handleSize / 2);
+  // Shared props for all four invisible corner resize zones
+  const cornerZoneProps = {
+    onPointerDown:   handleCornerPointerDown,
+    onPointerMove:   handleCornerPointerMove,
+    onPointerUp:     handleCornerPointerUp,
+    onPointerCancel: handleCornerPointerUp,
+  };
+  const CORNER = 20; // hit-area size in px
 
   return (
     <motion.div
@@ -510,39 +645,110 @@ function DraggableSticker({
         y,
         width: sticker.width,
         height: sticker.height,
-        rotate: sticker.rotation,
+        rotate: rotateMotion,
         // transform-based scale: no pixel re-rasterisation, preserves source quality
         scale: scaleMotion,
-        // top-left origin: visual footprint grows toward bottom-right,
-        // which matches the bottom-right resize handle position intuitively
-        transformOrigin: "top left",
-        cursor: "grab",
-        pointerEvents: "auto",
+        // center origin: sticker spins in place (matches moodboard image behavior)
+        transformOrigin: "center center",
+        cursor: isBlocked ? "default" : "grab",
+        pointerEvents: isBlocked ? "none" : (contentBounds && Math.max(sticker.width, sticker.height) * (sticker.scale ?? 1) > 100 ? "none" : "auto"),
         touchAction: "none",
         userSelect: "none",
-        zIndex: 5,
-        border: isSelected ? "2px dashed #A4A4A4" : "2px dashed transparent",
+        zIndex: 5 + zOrder,
         boxSizing: "border-box",
+        border: (() => {
+          if (!isSelected) return "2px dashed transparent";
+          const vis = Math.max(sticker.width, sticker.height) * (sticker.scale ?? 1);
+          return vis > 100 ? "2px dashed transparent" : "2px dashed #A4A4A4";
+        })(),
         transition: "border-color 0.15s ease",
       }}
-      drag
+      drag={!isGesturing && !isRotating && !isResizing}
       dragMomentum={false}
       dragElastic={0}
       onPointerDown={handlePointerDown}
       onMouseDown={stopNative}    // stops react-pageflip's mousedown listener (desktop)
       onPointerUp={handlePointerUp}
-      onDragEnd={handleDragEnd}
-      // Shadow lift instead of scale-on-drag to avoid conflicting with resize scale
-      whileDrag={isWashiTape
-        ? { cursor: "grabbing", zIndex: 20 }
-        : { cursor: "grabbing", zIndex: 20, filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.28))" }}
-      whileHover={isWashiTape ? {} : { filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.15))" }}
+      onDragStart={() => { setIsDragging(true); onManipulateStart(); }}
+      onDragEnd={(e, i) => { setIsDragging(false); handleDragEnd(); }}
+      // Shadow and hover effects removed
+      whileDrag={{ cursor: "grabbing", zIndex: 20 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
       exit={{ opacity: 0, scale: 0, transition: { duration: 0 } }}
     >
+      {/* 1×1 pivot marker at TL — getBoundingClientRect() gives exact screen
+          position of the rotation origin (transformOrigin:"top left") */}
+      <div ref={pivotRef} style={{ position: "absolute", top: 0, left: 0, width: 1, height: 1, pointerEvents: "none" }} />
+
+      {/* Selection border tightly wrapping non-transparent pixel content — large stickers only */}
+      {isSelected && contentBounds && Math.max(sticker.width, sticker.height) * (sticker.scale ?? 1) > 100 && (
+        <div style={{
+          position:     "absolute",
+          left:         contentBounds.left,
+          top:          contentBounds.top,
+          width:        contentBounds.bw,
+          height:       contentBounds.bh,
+          border:       "2px dashed #A4A4A4",
+          borderRadius: 2,
+          pointerEvents: "none",
+          boxSizing:    "border-box",
+        }} />
+      )}
+
       <img
         src={sticker.dataUrl}
         alt="sticker"
+        onLoad={(e) => {
+          const imgEl = e.currentTarget;
+          const nw = imgEl.naturalWidth;
+          const nh = imgEl.naturalHeight;
+          if (!nw || !nh) return;
+          const ew = sticker.width, eh = sticker.height;
+          // Defer pixel scan off the render cycle so the sticker renders immediately
+          setTimeout(() => {
+            try {
+              const canvas = document.createElement("canvas");
+              // Downsample large images for faster scanning (max 256px side)
+              const maxSide = 256;
+              const scanScale = Math.min(1, maxSide / Math.max(nw, nh));
+              const sw = Math.round(nw * scanScale);
+              const sh = Math.round(nh * scanScale);
+              canvas.width = sw;
+              canvas.height = sh;
+              const ctx = canvas.getContext("2d");
+              if (!ctx) return;
+              ctx.drawImage(imgEl, 0, 0, sw, sh);
+              const { data } = ctx.getImageData(0, 0, sw, sh);
+              let minX = sw, maxX = -1, minY = sh, maxY = -1;
+              for (let py = 0; py < sh; py++) {
+                for (let px = 0; px < sw; px++) {
+                  if (data[(py * sw + px) * 4 + 3] > 10) {
+                    if (px < minX) minX = px;
+                    if (px > maxX) maxX = px;
+                    if (py < minY) minY = py;
+                    if (py > maxY) maxY = py;
+                  }
+                }
+              }
+              if (maxX >= minX && maxY >= minY) {
+                // Map back from scan space → element space
+                const fitScale = Math.min(ew / nw, eh / nh);
+                const imgW = nw * fitScale, imgH = nh * fitScale;
+                const offX = (ew - imgW) / 2, offY = (eh - imgH) / 2;
+                const pixelScale = fitScale / scanScale;
+                setContentBounds({
+                  left: offX + minX * pixelScale,
+                  top:  offY + minY * pixelScale,
+                  bw:   (maxX - minX + 1) * pixelScale,
+                  bh:   (maxY - minY + 1) * pixelScale,
+                });
+              }
+            } catch {
+              // Canvas taint or other error — leave contentBounds null so the
+              // full element stays interactive (pointerEvents: auto fallback).
+            }
+          }, 0);
+        }}
         style={{
           width: "100%",
           height: "100%",
@@ -556,34 +762,53 @@ function DraggableSticker({
         draggable={false}
       />
 
-      {/* ── Resize handle — visible only when this sticker is selected ── */}
-      {/* On mobile the handle is larger (28 px) for easier finger targeting. */}
-      {/* Pinch-to-resize is also available on mobile as the primary gesture. */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: handleOffset,
-          right: handleOffset,
-          width: handleSize,
-          height: handleSize,
-          borderRadius: "50%",
-          background: "rgba(255,255,255,0.97)",
-          border: "1.5px solid rgba(99,102,241,0.7)",
-          boxShadow: "0 1px 5px rgba(0,0,0,0.28)",
-          cursor: "nwse-resize",
-          touchAction: "none",
-          zIndex: 10,
-          // Fade in/out smoothly — pointer-events off when hidden so it never
-          // accidentally captures touches when the sticker isn't selected
-          opacity: isSelected ? 1 : 0,
-          pointerEvents: isSelected ? "auto" : "none",
-          transition: "opacity 0.18s ease",
-        }}
-        onPointerDown={handleResizePointerDown}
-        onPointerMove={handleResizePointerMove}
-        onPointerUp={handleResizePointerUp}
-        onPointerCancel={handleResizePointerUp}
-      />
+      {/* ── Content-area hit div for large stickers (limits drag/hover to visible area) ── */}
+      {contentBounds && Math.max(sticker.width, sticker.height) * (sticker.scale ?? 1) > 100 && (
+        <div
+          data-sticker={sticker.id}
+          style={{
+            position:     "absolute",
+            left:         contentBounds.left,
+            top:          contentBounds.top,
+            width:        contentBounds.bw,
+            height:       contentBounds.bh,
+            pointerEvents: isBlocked ? "none" : "auto",
+            cursor:       isBlocked ? "default" : "grab",
+            touchAction:  "none",
+            zIndex:       1,
+          }}
+          onPointerDown={handlePointerDownContent}
+          onPointerUp={handlePointerUp}
+        />
+      )}
+
+      {/* ── Invisible corner resize zones — only active when selected ── */}
+      <div {...cornerZoneProps} style={{ position: "absolute", top: 0,    left:  0,    width: CORNER, height: CORNER, cursor: "nwse-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
+      <div {...cornerZoneProps} style={{ position: "absolute", top: 0,    right: 0,    width: CORNER, height: CORNER, cursor: "nesw-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
+      <div {...cornerZoneProps} style={{ position: "absolute", bottom: 0, left:  0,    width: CORNER, height: CORNER, cursor: "nesw-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
+      <div {...cornerZoneProps} style={{ position: "absolute", bottom: 0, right: 0,    width: CORNER, height: CORNER, cursor: "nwse-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
+
+      {/* ── Invisible rotate zones — only active when selected ── */}
+      {(() => {
+        const rotPE = isSelected && !isDragging && !isResizing ? "auto" : "none";
+        const cb = contentBounds;
+        const isLarge = Math.max(sticker.width, sticker.height) * (sticker.scale ?? 1) > 100 && !!cb;
+        // Small stickers: zones outside element corners (standard -ROT_OFF)
+        // Large stickers: zones outside contentBounds corners so they sit just
+        //   beyond the visible inner border and are easy to find
+        const tlR = isLarge && cb ? { top: cb.top - ROT_OFF,                        left: cb.left - ROT_OFF }                              : { top: -ROT_OFF,    left:  -ROT_OFF };
+        const trR = isLarge && cb ? { top: cb.top - ROT_OFF,                        left: cb.left + cb.bw + ROT_OFF - ROT_SIZE }            : { top: -ROT_OFF,    right: -ROT_OFF };
+        const blR = isLarge && cb ? { top: cb.top + cb.bh + ROT_OFF - ROT_SIZE,     left: cb.left - ROT_OFF }                              : { bottom: -ROT_OFF, left:  -ROT_OFF };
+        const brR = isLarge && cb ? { top: cb.top + cb.bh + ROT_OFF - ROT_SIZE,     left: cb.left + cb.bw + ROT_OFF - ROT_SIZE }            : { bottom: -ROT_OFF, right: -ROT_OFF };
+        const rp = { onPointerDown: handleRotatePointerDown, onPointerMove: handleRotatePointerMove, onPointerUp: handleRotatePointerUp, onPointerCancel: handleRotatePointerUp };
+        const rs: React.CSSProperties = { position: "absolute", width: ROT_SIZE, height: ROT_SIZE, cursor: "grab", touchAction: "none", pointerEvents: rotPE as any, zIndex: 8, background: "transparent" };
+        return (<>
+          <div {...rp} style={{ ...rs, ...tlR }} />
+          <div {...rp} style={{ ...rs, ...trR }} />
+          <div {...rp} style={{ ...rs, ...blR }} />
+          <div {...rp} style={{ ...rs, ...brR }} />
+        </>);
+      })()}
     </motion.div>
   );
 }

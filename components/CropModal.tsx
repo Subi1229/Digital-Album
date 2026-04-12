@@ -15,6 +15,9 @@ interface CropModalProps {
 export default function CropModal({ pending, onDone, onCancel }: CropModalProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  // Minimum zoom = image must always fill the crop box so no black background bleeds in
+  // react-easy-crop's default minZoom is 1, which already ensures this when restrictPosition=true
+  const minZoom = 1;
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<CropArea | null>(null);
   const [processing, setProcessing] = useState(false);
 
@@ -48,6 +51,10 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
 
   return (
     <AnimatePresence>
+      <style>{`
+        .crop-zoom-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.92); cursor: pointer; }
+        .crop-zoom-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.92); border: none; cursor: pointer; }
+      `}</style>
       {pending && (
         <motion.div
           className="fixed inset-0 z-50 flex items-center justify-center"
@@ -111,13 +118,14 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
                   image={pending.objectUrl}
                   crop={crop}
                   zoom={zoom}
+                  minZoom={minZoom}
                   aspect={pending.aspectRatio}
                   onCropChange={setCrop}
                   onZoomChange={setZoom}
                   onCropComplete={onCropComplete}
                   cropShape="rect"
                   showGrid
-                  restrictPosition={false}
+                  restrictPosition={true}
                   style={{
                     containerStyle: { borderRadius: 16, overflow: "hidden" },
                     cropAreaStyle: {
@@ -139,12 +147,12 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
                 </svg>
                 <input
                   type="range"
-                  min={1}
+                  min={minZoom}
                   max={3}
                   step={0.01}
                   value={zoom}
                   onChange={(e) => setZoom(Number(e.target.value))}
-                  className="flex-1 h-1 appearance-none rounded-full cursor-pointer"
+                  className="crop-zoom-slider flex-1 h-1 appearance-none rounded-full cursor-pointer"
                   style={{
                     background: `linear-gradient(to right, rgba(255,255,255,0.7) ${((zoom - 1) / 2) * 100}%, rgba(255,255,255,0.15) ${((zoom - 1) / 2) * 100}%)`,
                   }}

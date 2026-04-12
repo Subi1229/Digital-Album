@@ -1,10 +1,13 @@
 "use client";
 
-import React, { forwardRef } from "react";
+import React, { forwardRef, useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import ImageSlot from "./ImageSlot";
 import StickerLayer from "./StickerLayer";
-import { Sticker } from "@/lib/types";
+import MoodboardImageLayer from "./MoodboardImageLayer";
+import MoodboardTextLayer from "./MoodboardTextLayer";
+import DrawingLayer from "./DrawingLayer";
+import { Sticker, MoodboardImage, MoodboardText } from "@/lib/types";
 
 // ─── Figma-exact dimensions ──────────────────────────────────────────────────
 export const PAGE_W = 478;
@@ -48,24 +51,24 @@ function getSlotDefs(templateId: number, isLeft: boolean): SlotDef[] {
   }
   if (templateId === 3) {
     return [
-      { x: 0,          y: 0,                       w: SLOT_COL_W, h: T3_LT_H },
-      { x: 0,          y: T3_LT_H + ROW_GAP,       w: SLOT_COL_W, h: GRID_H - T3_LT_H - ROW_GAP },
-      { x: SLOT_COL2_X, y: 0,                       w: SLOT_COL_W, h: T3_RT_H },
-      { x: SLOT_COL2_X, y: T3_RT_H + ROW_GAP,       w: SLOT_COL_W, h: GRID_H - T3_RT_H - ROW_GAP },
+      { x: 0, y: 0, w: SLOT_COL_W, h: T3_LT_H },
+      { x: 0, y: T3_LT_H + ROW_GAP, w: SLOT_COL_W, h: GRID_H - T3_LT_H - ROW_GAP },
+      { x: SLOT_COL2_X, y: 0, w: SLOT_COL_W, h: T3_RT_H },
+      { x: SLOT_COL2_X, y: T3_RT_H + ROW_GAP, w: SLOT_COL_W, h: GRID_H - T3_RT_H - ROW_GAP },
     ];
   }
   if (templateId === 4) {
     const BOT_H = GRID_H - T4_TOP_H - ROW_GAP;
     if (!isLeft) {
       return [
-        { x: 0,          y: 0,               w: SLOT_COL_W, h: BOT_H },
-        { x: SLOT_COL2_X, y: 0,              w: SLOT_COL_W, h: BOT_H },
-        { x: 0,          y: BOT_H + ROW_GAP, w: GRID_W,     h: T4_TOP_H },
+        { x: 0, y: 0, w: SLOT_COL_W, h: BOT_H },
+        { x: SLOT_COL2_X, y: 0, w: SLOT_COL_W, h: BOT_H },
+        { x: 0, y: BOT_H + ROW_GAP, w: GRID_W, h: T4_TOP_H },
       ];
     }
     return [
-      { x: 0,          y: 0,                 w: GRID_W,     h: T4_TOP_H },
-      { x: 0,          y: T4_TOP_H + ROW_GAP, w: SLOT_COL_W, h: BOT_H },
+      { x: 0, y: 0, w: GRID_W, h: T4_TOP_H },
+      { x: 0, y: T4_TOP_H + ROW_GAP, w: SLOT_COL_W, h: BOT_H },
       { x: SLOT_COL2_X, y: T4_TOP_H + ROW_GAP, w: SLOT_COL_W, h: BOT_H },
     ];
   }
@@ -82,6 +85,7 @@ function getSlotDefs(templateId: number, isLeft: boolean): SlotDef[] {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface AlbumPageProps {
+  albumId: string;
   pageIndex: number;
   isLeft: boolean;
   images: Record<number, string>;
@@ -93,12 +97,23 @@ export interface AlbumPageProps {
   onStickerPanelOpen: (pageIndex: number) => void;
   pageNumber: number;
   templateId?: 1 | 2 | 3 | 4 | 5;
+  moodboardImages?: MoodboardImage[];
+  onMoodboardImagesChange?: (imgs: MoodboardImage[]) => void;
+  moodboardTexts?: MoodboardText[];
+  onMoodboardTextsChange?: (txts: MoodboardText[]) => void;
+  bgImageUrl?: string | null;
+  drawings?: Record<number, string>;
+  onDrawingSave?: (pageIndex: number, dataUrl: string) => void;
+  isDrawingActive?: boolean;
+  onStartDrawing?: (pageIndex: number) => void;
+  onStopDrawing?: (onStop: () => void) => void;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
   (
     {
+      albumId,
       pageIndex,
       isLeft,
       images,
@@ -109,24 +124,202 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
       onStickerPanelOpen,
       pageNumber,
       templateId = 1,
+      moodboardImages = [],
+      onMoodboardImagesChange,
+      moodboardTexts = [],
+      onMoodboardTextsChange,
+      bgImageUrl,
+      drawings = {},
+      onDrawingSave,
+      isDrawingActive,
+      onStartDrawing,
+      onStopDrawing,
     },
     ref
   ) => {
+    const [localMoodboardImages, setLocalMoodboardImages] = useState<MoodboardImage[]>([]);
+    const [localMoodboardTexts, setLocalMoodboardTexts] = useState<MoodboardText[]>([]);
+    // ── Moodboard "Add Image" file input (template 5 only) ─────────────────
+    const mbFileInputRef = useRef<HTMLInputElement>(null);
+
+    const addMoodboardImageFromFile = useCallback(
+      (file: File) => {
+        if (!file.type.startsWith("image/") || !onMoodboardImagesChange) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target?.result as string;
+          if (!dataUrl) return;
+          const img = new window.Image();
+          img.onload = () => {
+            // Default size: fit within 240×180, preserving aspect ratio
+            const maxW = 240, maxH = 180;
+            const ratio = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+            const w = Math.round(img.naturalWidth * ratio);
+            const h = Math.round(img.naturalHeight * ratio);
+            // Centered placement
+            const x = Math.round((PAGE_W - w) / 2);
+            const y = Math.round((PAGE_H - h) / 2);
+            const nextZ = moodboardImages.reduce((max, entry) => Math.max(max, entry.zIndex ?? 1), 1) + 1;
+            const newImg: MoodboardImage = {
+              id: `mb-${albumId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              albumId,
+              pageIndex,
+              src: dataUrl,
+              x, y, width: w, height: h,
+              rotation: 0,
+              zIndex: nextZ,
+            };
+            onMoodboardImagesChange([...moodboardImages, newImg]);
+          };
+          img.src = dataUrl;
+        };
+        reader.readAsDataURL(file);
+      },
+      [albumId, moodboardImages, onMoodboardImagesChange, pageIndex],
+    );
+
+    const handleMbFileSelect = useCallback(
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        addMoodboardImageFromFile(file);
+        e.target.value = "";
+      },
+      [addMoodboardImageFromFile],
+    );
+
+    const handleMbDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+    }, []);
+
+    const handleMbDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files?.[0];
+      if (file && file.type.startsWith("image/")) {
+        addMoodboardImageFromFile(file);
+        return;
+      }
+
+      const uri = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
+      const cleaned = uri.split("\n").find((line) => line && !line.startsWith("#"))?.trim();
+      if (!cleaned) return;
+
+      fetch(cleaned)
+        .then((res) => res.blob())
+        .then((blob) => {
+          if (!blob.type.startsWith("image/")) return;
+          const name = cleaned.split("/").pop()?.split("?")[0] || "dropped-image";
+          const dropped = new File([blob], name, { type: blob.type });
+          addMoodboardImageFromFile(dropped);
+        })
+        .catch(() => { });
+    }, [addMoodboardImageFromFile]);
+
+    const handleAddMoodboardText = useCallback(() => {
+      if (!onMoodboardTextsChange) return;
+      const nextZ = moodboardTexts.reduce((max, entry) => Math.max(max, entry.zIndex ?? 1), 1) + 1;
+      const newText: MoodboardText = {
+        id: `mbtxt-${albumId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        albumId,
+        pageIndex,
+        text: "Text",
+        x: Math.round(PAGE_W * 0.35),
+        y: Math.round(PAGE_H * 0.45),
+        width: 180,
+        fontSize: 28,
+        fontFamily: "'Dancing Script', cursive",
+        fontWeight: "normal" as const,
+        fontStyle: "normal" as const,
+        color: "#3F3F46",
+        rotation: 0,
+        zIndex: nextZ,
+      };
+      onMoodboardTextsChange([...moodboardTexts, newText]);
+    }, [albumId, moodboardTexts, onMoodboardTextsChange, pageIndex]);
+
     if (templateId === 5) {
       return (
         <div
           ref={ref}
           className="album-page"
+          onDragOver={handleMbDragOver}
+          onDrop={handleMbDrop}
           style={{
             width: PAGE_W,
             height: PAGE_H,
-            background: "#F3F2F0",
+            background: "#FFFFFF",
             position: "relative",
             overflow: "hidden",
             flexShrink: 0,
             isolation: "isolate",
+            backfaceVisibility: "hidden",
+            WebkitBackfaceVisibility: "hidden",
+            transform: "translateZ(0)",
+            contain: "strict",
           }}
         >
+          {/* Hidden file input for moodboard images */}
+          <input
+            ref={mbFileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleMbFileSelect}
+          />
+
+          {/* Add Image button */}
+          <motion.button
+            onClick={() => mbFileInputRef.current?.click()}
+            className="absolute flex items-center justify-center rounded-full"
+            style={{
+              top: 14,
+              right: isLeft ? 96 : undefined,
+              left: isLeft ? undefined : 96,
+              width: 32,
+              height: 32,
+              background: "rgba(255,255,255,0.94)",
+              boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
+              border: "1.5px solid rgba(0,0,0,0.05)",
+              zIndex: 60,
+            }}
+            whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
+            whileTap={{ scale: 0.92 }}
+            title="Add image"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#79716B" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+          </motion.button>
+
+          {/* Add Text button */}
+          <motion.button
+            onClick={handleAddMoodboardText}
+            className="absolute flex items-center justify-center rounded-full"
+            style={{
+              top: 14,
+              right: isLeft ? 56 : undefined,
+              left: isLeft ? undefined : 56,
+              width: 32,
+              height: 32,
+              background: "rgba(255,255,255,0.94)",
+              boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
+              border: "1.5px solid rgba(0,0,0,0.05)",
+              zIndex: 60,
+              fontSize: 14,
+              fontWeight: 700,
+              color: "#57534E",
+              fontFamily: "Georgia, serif",
+            }}
+            whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
+            whileTap={{ scale: 0.92 }}
+            title="Add text"
+          >
+            T
+          </motion.button>
+
+          {/* Sticker panel button */}
           <motion.button
             onClick={() => onStickerPanelOpen(pageIndex)}
             className="absolute flex items-center justify-center rounded-full"
@@ -139,7 +332,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
               background: "rgba(255,255,255,0.94)",
               boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
               border: "1.5px solid rgba(0,0,0,0.05)",
-              zIndex: 5,
+              zIndex: 60,
             }}
             whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
             whileTap={{ scale: 0.92 }}
@@ -161,6 +354,89 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
               <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="2.5" />
             </svg>
           </motion.button>
+
+          {/* Pencil (Drawing) button */}
+          <button 
+            onClick={() => onStartDrawing?.(pageIndex)}
+            className="absolute flex items-center justify-center rounded-full"
+            style={{
+              top: 14,
+              right: isLeft ? 136 : undefined,
+              left: isLeft ? undefined : 136,
+              width: 32,
+              height: 32,
+              background: isDrawingActive ? "#1E1E1E" : "rgba(255,255,255,0.94)",
+              boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
+              border: "1.5px solid rgba(0,0,0,0.05)",
+              zIndex: 60,
+              color: isDrawingActive ? "#FFFFFF" : "#79716B",
+            }}
+            title="Freehand Drawing"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l5 5"/></svg>
+          </button>
+
+          {/* Moodboard images layer (below stickers/washi) */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 45,
+              pointerEvents: "none",
+            }}
+          >
+            <MoodboardImageLayer
+              albumId={albumId}
+              images={moodboardImages}
+              pageIndex={pageIndex}
+              containerWidth={PAGE_W}
+              containerHeight={PAGE_H}
+              onImagesChange={onMoodboardImagesChange ?? (() => { })}
+            />
+          </div>
+
+          {/* Moodboard text layer — above stickers (50) and moodboard images (45) */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 55,
+              pointerEvents: "none",
+            }}
+          >
+            <MoodboardTextLayer
+              albumId={albumId}
+              pageIndex={pageIndex}
+              texts={moodboardTexts}
+              containerWidth={PAGE_W}
+              containerHeight={PAGE_H}
+              onTextsChange={onMoodboardTextsChange ?? (() => { })}
+            />
+          </div>
+
+          {/* Saved Drawing Layer (non-interactive display) */}
+          {drawings[pageIndex] && !isDrawingActive && (
+            <div className="absolute inset-0 z-[58] pointer-events-none">
+              <img 
+                src={drawings[pageIndex]} 
+                alt="drawing" 
+                className="w-full h-full object-contain" 
+              />
+            </div>
+          )}
+
+          {/* Active Drawing Layer (full interactive canvas) */}
+          {isDrawingActive && (
+            <DrawingLayer
+              width={PAGE_W}
+              height={PAGE_H}
+              initialDataUrl={drawings?.[pageIndex]}
+              onSave={(dataUrl) => onDrawingSave?.(pageIndex, dataUrl)}
+              onClose={() => onStopDrawing?.(() => {})}
+            />
+          )}
+
+          {/* Sticker layer */}
           <div
             style={{
               position: "absolute",
@@ -192,10 +468,11 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
           position: "relative",
           overflow: "hidden",
           flexShrink: 0,
-          // Creates an isolated stacking context so that child z-indices
-          // (e.g. stickers at z:50) are self-contained and cannot paint
-          // above sibling pages during the react-pageflip 3D transition.
           isolation: "isolate",
+          backfaceVisibility: "hidden",
+          WebkitBackfaceVisibility: "hidden",
+          transform: "translateZ(0)",
+          contain: "strict",
         }}
       >
         {/* ── Page-edge gradient ───────────────────────────────────── z:1 */}
@@ -218,7 +495,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
           }}
         />
 
-        {/* ── Sticker button ───────────────────────────────────────── z:5 */}
+        {/* ── Sticker button ───────────────────────────────────────── z:60 */}
         <motion.button
           onClick={() => onStickerPanelOpen(pageIndex)}
           className="absolute flex items-center justify-center rounded-full"
@@ -231,7 +508,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             background: "rgba(255,255,255,0.94)",
             boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
             border: "1.5px solid rgba(0,0,0,0.05)",
-            zIndex: 5,
+            zIndex: 60,
           }}
           whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
           whileTap={{ scale: 0.92 }}
@@ -378,9 +655,9 @@ function GridLines({ templateId = 1, isLeft = false }: { templateId?: number; is
   if (templateId === 4) {
     const BOT_H = GRID_H - T4_TOP_H - ROW_GAP;
     const midX = SLOT_COL_W + COL_GAP / 2;
-    const divY  = isLeft ? T4_TOP_H + ROW_GAP / 2 : BOT_H + ROW_GAP / 2;
-    const vY1   = isLeft ? T4_TOP_H + ROW_GAP : 0;
-    const vY2   = isLeft ? GRID_H : BOT_H;
+    const divY = isLeft ? T4_TOP_H + ROW_GAP / 2 : BOT_H + ROW_GAP / 2;
+    const vY1 = isLeft ? T4_TOP_H + ROW_GAP : 0;
+    const vY2 = isLeft ? GRID_H : BOT_H;
     return (
       <svg {...svgProps}>
         <line x1={0} y1={divY} x2={GRID_W} y2={divY} stroke={c} strokeWidth={1} />

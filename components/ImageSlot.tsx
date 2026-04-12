@@ -62,7 +62,7 @@ export default function ImageSlot({
         const dropped = new File([blob], name, { type: blob.type });
         onDropFile(dropped);
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   return (

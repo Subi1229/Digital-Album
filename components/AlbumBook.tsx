@@ -1,22 +1,31 @@
-﻿"use client";
+"use client";
 
-import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
+import React, { useRef, useState, useCallback, useEffect, useMemo, startTransition } from "react";
 import HTMLFlipBook from "react-pageflip";
 import { motion, AnimatePresence } from "framer-motion";
 import AlbumPage, { PAGE_W, PAGE_H, SLOT_ASPECT } from "./AlbumPage";
 import CropModal from "./CropModal";
 import StickerPanel from "./StickerPanel";
-import { SlotImage, Sticker, LibrarySticker, PendingCrop } from "@/lib/types";
+import { SlotImage, Sticker, LibrarySticker, PendingCrop, MoodboardImage, MoodboardText } from "@/lib/types";
 import {
   getAllImages,
   saveImage,
   getAllStickers,
+  getAllMoodboardImages,
+  getAllMoodboardTexts,
+  saveMoodboardImages,
+  saveMoodboardTexts,
   getAllLibraryStickers,
   saveLibrarySticker,
   deleteSticker,
   deleteAlbumData,
   getAlbumFirstSlotImage,
+  getAlbumAnyImage,
   setActiveAlbumId as setDbActiveAlbumId,
+  saveAlbumBackground,
+  getAlbumBackground,
+  getAllDrawings,
+  saveDrawing,
 } from "@/lib/db";
 // MOBILE FIX: shared flags so ImageSlot can suppress clicks from corner-taps
 import { markCornerTap, wasCornerTapRecent } from "@/lib/stickerInteraction";
@@ -47,12 +56,12 @@ const DEFAULT_ALBUMS: AlbumMeta[] = [
 function normalizeAlbums(raw: unknown): AlbumMeta[] {
   const rawAlbums = Array.isArray(raw)
     ? raw.filter(
-        (a): a is AlbumMeta =>
-          Boolean(a) &&
-          typeof (a as AlbumMeta).id === "string" &&
-          typeof (a as AlbumMeta).name === "string" &&
-          typeof (a as AlbumMeta).createdAt === "number"
-      )
+      (a): a is AlbumMeta =>
+        Boolean(a) &&
+        typeof (a as AlbumMeta).id === "string" &&
+        typeof (a as AlbumMeta).name === "string" &&
+        typeof (a as AlbumMeta).createdAt === "number"
+    )
     : [];
 
   const hasModernAlbum1 = rawAlbums.some((a) => a.id.trim() === "album-1");
@@ -146,13 +155,20 @@ export default function AlbumBook() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cornerTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const bgInputRef = useRef<HTMLInputElement>(null);
 
   const [currentPage, setCurrentPage] = useState(0);
+  const [drawingPageIndex, setDrawingPageIndex] = useState<number | null>(null);
   const [images, setImages] = useState<Record<string, string>>({});
   const [stickers, setStickers] = useState<Sticker[]>([]);
+  const [moodboardImages, setMoodboardImages] = useState<MoodboardImage[]>([]);
+  const [moodboardTexts, setMoodboardTexts] = useState<MoodboardText[]>([]);
   const [libraryStickers, setLibraryStickers] = useState<LibrarySticker[]>([]);
+  const [drawings, setDrawings] = useState<Record<number, string>>({});
   const [pendingCrop, setPendingCrop] = useState<PendingCrop | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFlipping, setIsFlipping] = useState(false);
+  const flipHalfTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [bookScale, setBookScale] = useState(1);
   const [stickerPanelOpen, setStickerPanelOpen] = useState(false);
@@ -168,14 +184,48 @@ export default function AlbumBook() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateModalStep, setTemplateModalStep] = useState<"pick" | "custom">("pick");
   const [pendingCustomStyles, setPendingCustomStyles] = useState<(1 | 2 | 3 | 4)[]>([]);
+  const [bgImageUrl, setBgImageUrl] = useState<string | null>(null);
+  const [isBgDark, setIsBgDark] = useState(false);
 
-  // â”€â”€ Load + migrate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  useEffect(() => {
+    if (!bgImageUrl) {
+      setIsBgDark(false);
+      return;
+    }
+    const img = new window.Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 50;
+      canvas.height = 50;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, 50, 50);
+      try {
+        const data = ctx.getImageData(0, 0, 50, 50).data;
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          sum += data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+        }
+        setIsBgDark(sum / (50 * 50) < 128);
+      } catch {
+        setIsBgDark(false);
+      }
+    };
+    img.src = bgImageUrl;
+  }, [bgImageUrl]);
+
+  // ————————————————————————————————————————————————————————————————————————————————
   const loadAlbumData = useCallback(async (albumId: string, includeLibrary: boolean) => {
     setDbActiveAlbumId(albumId);
-    const [imgs, stks, libStks] = await Promise.all([
+    const [imgs, stks, moodImgs, moodTxts, libStks, bgUrl, drws] = await Promise.all([
       getAllImages(),
       getAllStickers(),
+      getAllMoodboardImages(),
+      getAllMoodboardTexts(),
       includeLibrary ? getAllLibraryStickers() : Promise.resolve<LibrarySticker[]>([]),
+      getAlbumBackground(albumId),
+      getAllDrawings(),
     ]);
 
     const imgMap: Record<string, string> = {};
@@ -185,6 +235,10 @@ export default function AlbumBook() {
     const legacyLibraryStickers = stks.filter((s) => s.pageIndex === -1);
     const placedStickers = stks.filter((s) => s.pageIndex !== -1);
     setStickers(placedStickers);
+    setMoodboardImages(moodImgs);
+    setMoodboardTexts(moodTxts);
+    setBgImageUrl(bgUrl);
+    setDrawings(drws);
 
     if (!includeLibrary) return;
 
@@ -209,7 +263,7 @@ export default function AlbumBook() {
     );
   }, []);
 
-  // â”€â”€ Load + migrate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ————————————————————————————————————————————————————————————————————————————————
   useEffect(() => {
     (async () => {
       try {
@@ -229,7 +283,20 @@ export default function AlbumBook() {
     })();
   }, [loadAlbumData]);
 
-  // â”€â”€ Responsive scale â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  useEffect(() => {
+    if (isLoading) return;
+    saveMoodboardImages(moodboardImages).catch((e) => {
+      console.error("Moodboard save error:", e);
+    });
+  }, [isLoading, moodboardImages]);
+  useEffect(() => {
+    if (isLoading) return;
+    saveMoodboardTexts(moodboardTexts).catch((e) => {
+      console.error("Moodboard text save error:", e);
+    });
+  }, [isLoading, moodboardTexts]);
+
+  // ————————————————————————————————————————————————————————————————————————————————
   useEffect(() => {
     function compute() {
       const mobile = window.innerWidth < 768;
@@ -288,7 +355,9 @@ export default function AlbumBook() {
       const entries = await Promise.all(
         albums.map(async (album) => {
           try {
-            const src = await getAlbumFirstSlotImage(album.id);
+            const src = album.templateId === 5
+              ? await getAlbumAnyImage(album.id)
+              : await getAlbumFirstSlotImage(album.id);
             return [album.id, src] as const;
           } catch {
             return [album.id, null] as const;
@@ -308,9 +377,9 @@ export default function AlbumBook() {
     return () => {
       cancelled = true;
     };
-  }, [albums, images]);
+  }, [albums, images, moodboardImages]);
 
-  // â”€â”€ Image upload â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ————————————————————————————————————————————————————————————————————————————————
   const handleSlotClick = useCallback((pageIndex: number, slotIndex: number) => {
     if (!fileInputRef.current) return;
     fileInputRef.current.dataset.page = String(pageIndex);
@@ -351,6 +420,8 @@ export default function AlbumBook() {
   }, [pendingCrop]);
 
   const handleStickersChange = useCallback((u: Sticker[]) => setStickers(u), []);
+  const handleMoodboardImagesChange = useCallback((imgs: MoodboardImage[]) => setMoodboardImages(imgs), []);
+  const handleMoodboardTextsChange = useCallback((txts: MoodboardText[]) => setMoodboardTexts(txts), []);
   const handleLibraryChange = useCallback((ls: LibrarySticker[]) => setLibraryStickers(ls), []);
   const handleStickerPanelOpen = useCallback((pi: number) => { setStickerPanelPage(pi); setStickerPanelOpen(true); }, []);
   const updateAlbums = useCallback((updater: (prev: AlbumMeta[]) => AlbumMeta[]) => {
@@ -359,6 +430,10 @@ export default function AlbumBook() {
       persistAlbums(next);
       return next;
     });
+  }, []);
+  const handleDrawingSave = useCallback(async (pageIndex: number, dataUrl: string) => {
+    setDrawings((prev) => ({ ...prev, [pageIndex]: dataUrl }));
+    await saveDrawing(pageIndex, dataUrl);
   }, []);
   const handleSelectAlbum = useCallback(async (albumId: string) => {
     if (albumId === activeAlbumId) {
@@ -371,15 +446,25 @@ export default function AlbumBook() {
     setMenuAlbumId(null);
     setIsSidebarOpen(false);
     setStickerPanelOpen(false);
+    setIsLoading(true);
     setCurrentPage(0);
     setActiveAlbumId(albumId);
     persistActiveAlbum(albumId);
+    // Clear stale data synchronously so old album content disappears before new data loads
+    setImages({});
+    setStickers([]);
+    setMoodboardImages([]);
+    setMoodboardTexts([]);
+    setBgImageUrl(null);
+    setDrawings({});
     const openAt = Date.now();
     updateAlbums((prev) => prev.map((a) => (a.id === albumId ? { ...a, lastOpenedAt: openAt } : a)));
     try {
       await loadAlbumData(albumId, false);
     } catch (e) {
       console.error("Album switch error:", e);
+    } finally {
+      setIsLoading(false);
     }
   }, [activeAlbumId, loadAlbumData, pendingCrop, updateAlbums]);
   const handleAddNewAlbum = useCallback(() => {
@@ -402,6 +487,7 @@ export default function AlbumBook() {
     };
     if (pendingCrop?.objectUrl) URL.revokeObjectURL(pendingCrop.objectUrl);
     setPendingCrop(null);
+    setIsLoading(true);
     updateAlbums((prev) => [...prev, nextAlbum]);
     setActiveAlbumId(nextAlbum.id);
     persistActiveAlbum(nextAlbum.id);
@@ -416,6 +502,10 @@ export default function AlbumBook() {
       console.error("New album load error:", e);
       setImages({});
       setStickers([]);
+      setMoodboardImages([]);
+      setMoodboardTexts([]);
+    } finally {
+      setIsLoading(false);
     }
   }, [albums.length, loadAlbumData, pendingCrop, updateAlbums]);
   const handleConfirmCustomStyle = useCallback(async (styles: (1 | 2 | 3 | 4)[]) => {
@@ -437,6 +527,7 @@ export default function AlbumBook() {
     };
     if (pendingCrop?.objectUrl) URL.revokeObjectURL(pendingCrop.objectUrl);
     setPendingCrop(null);
+    setIsLoading(true);
     updateAlbums((prev) => [...prev, nextAlbum]);
     setActiveAlbumId(nextAlbum.id);
     persistActiveAlbum(nextAlbum.id);
@@ -451,6 +542,10 @@ export default function AlbumBook() {
       console.error("New album load error:", e);
       setImages({});
       setStickers([]);
+      setMoodboardImages([]);
+      setMoodboardTexts([]);
+    } finally {
+      setIsLoading(false);
     }
   }, [albums.length, loadAlbumData, pendingCrop, updateAlbums]);
 
@@ -487,11 +582,16 @@ export default function AlbumBook() {
       return remaining.length > 0 ? remaining : DEFAULT_ALBUMS;
     });
     if (activeAlbumId === albumId) {
+      setIsLoading(true);
       const fallbackId = "album-1";
       setActiveAlbumId(fallbackId);
       persistActiveAlbum(fallbackId);
       setCurrentPage(0);
-      await loadAlbumData(fallbackId, false);
+      try {
+        await loadAlbumData(fallbackId, false);
+      } finally {
+        setIsLoading(false);
+      }
     }
   }, [activeAlbumId, albumDialog, closeAlbumDialog, loadAlbumData, updateAlbums]);
   const handleDeleteAlbum = useCallback((albumId: string) => {
@@ -539,8 +639,8 @@ export default function AlbumBook() {
 
   const pageSequence = Array.from({ length: TOTAL_PAGES }, (_, i) => i);
 
-  // â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // MOBILE FIX: removed `currentPage` from deps â€” it was unused inside the callback
+  // ————————————————————————————————————————————————————————————————————————————————
+  // MOBILE FIX: removed `currentPage` from deps — it was unused inside the callback
   // and caused the function to be recreated on every flip. The dots' onClick
   // captures `fn = goNext/goPrev` once; a stale reference still called the
   // correct pf.flipNext/Prev(), but removing the dep makes the function
@@ -557,6 +657,22 @@ export default function AlbumBook() {
     for (let i = 0; i < 9; i++) { const v = images[`${pi}-${i}`]; if (v) r[i] = v; }
     return r;
   }, [images]);
+  const moodboardCount = useMemo(() => moodboardImages.length, [moodboardImages]);
+  const albumImageLimit = useMemo(() => {
+    const slotsPerTemplate: Record<1 | 2 | 3 | 4, number> = {
+      1: 9,
+      2: 6,
+      3: 4,
+      4: 3,
+    };
+    let total = 0;
+    for (let pageIdx = 0; pageIdx < TOTAL_PAGES; pageIdx++) {
+      const tid = getPageTemplateId(pageIdx);
+      if (tid === 5) continue;
+      total += slotsPerTemplate[tid];
+    }
+    return total;
+  }, [getPageTemplateId]);
 
   const spreadIndex = Math.floor(currentPage / 2);
   const totalSpreads = Math.ceil(TOTAL_PAGES / 2);
@@ -569,16 +685,29 @@ export default function AlbumBook() {
   const visualW = isMobile ? PAGE_H * bookScale : bookNaturalW * bookScale;
   const visualH = isMobile ? bookNaturalW * bookScale : PAGE_H * bookScale;
 
-  // â”€â”€ Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const handleBgChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target?.result as string;
+      await saveAlbumBackground(activeAlbumId, dataUrl);
+      setBgImageUrl(dataUrl);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  // ————————————————————————————————————————————————————————————————————————————————
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen"
-        style={{ background: "linear-gradient(135deg,#F5F5F4 0%,#E7E5E4 100%)" }}>
+        style={{ background: "#F5EFE6" }}>
         <motion.div className="flex flex-col items-center gap-4"
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <motion.div className="w-9 h-9 rounded-full border-[2.5px] border-stone-300 border-t-stone-500"
             animate={{ rotate: 360 }} transition={{ duration: 0.85, repeat: Infinity, ease: "linear" }} />
-          <p className="text-stone-500 text-sm font-medium font-sans tracking-wide">Opening your album...</p>
+          <p className="text-sm font-medium font-sans tracking-wide" style={{ color: "#5C4A32" }}>Opening your album...</p>
         </motion.div>
       </div>
     );
@@ -586,9 +715,16 @@ export default function AlbumBook() {
 
   return (
     <div className="flex flex-col items-center w-full min-h-screen select-none"
-      style={{ background: "linear-gradient(160deg,#F5F5F4 0%,#EAE8E6 60%,#E2DFDC 100%)" }}>
+      style={{
+        background: bgImageUrl
+          ? `url(${bgImageUrl}) center/cover no-repeat fixed`
+          : "#F5EFE6",
+        imageRendering: "high-quality" as React.CSSProperties["imageRendering"]
+      }}>
 
-      {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      <input type="file" accept="image/*" className="hidden" ref={bgInputRef} onChange={handleBgChange} />
+
+      {/* ———————————————————————————————————————————————————————————————————————————————— */}
       <motion.header className="w-full flex items-center justify-between px-6 pt-6 pb-3"
         initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.06, duration: 0.4 }}>
@@ -598,23 +734,41 @@ export default function AlbumBook() {
             aria-label="Open album sidebar"
             onClick={() => setIsSidebarOpen(true)}
             className="w-8 h-8 rounded-md flex items-center justify-center"
-            style={{ border: "1px solid rgba(0,0,0,0.12)", color: "#79716B", background: "rgba(255,255,255,0.55)" }}
+            style={{ border: "1px solid rgba(0,0,0,0.12)", color: "#5C4A32", background: "rgba(245,239,230,0.55)" }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
               <path d="M4 7h16M4 12h16M4 17h16" />
             </svg>
           </button>
-          <div className="flex flex-col leading-tight">
-            <span className="font-serif text-lg tracking-wide" style={{ color: "#57534E", fontWeight: 500 }}>
+
+          <button
+            type="button"
+            aria-label="Change album background"
+            onClick={() => bgInputRef.current?.click()}
+            className="w-8 h-8 rounded-md flex items-center justify-center ml-1"
+            style={{ border: "1px solid rgba(210,140,170,0.35)", color: "#C06B90", background: "rgba(255,240,245,0.70)" }}
+            title="Set Album Background"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+          </button>
+
+          <div className="flex flex-col leading-tight ml-2">
+            <span className="font-serif text-lg tracking-wide transition-colors" style={{ color: isBgDark ? "#F8F9FA" : "#1A1209", fontWeight: 500 }}>
               My Photo Album
             </span>
-            <span className="text-[11px] font-sans" style={{ color: "#A8A29E" }}>
+            <span className="text-[12px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#5C4A32" }}>
               {activeAlbumName}
             </span>
           </div>
         </div>
-        <span className="text-xs font-sans" style={{ color: "#A8A29E" }}>
-          {Object.keys(images).length} / {TOTAL_PAGES * 9} photos
+        <span className="text-[13px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#5C4A32" }}>
+          {activeTemplateId === 5
+            ? `${moodboardCount} photos`
+            : `${Object.keys(images).length} / ${albumImageLimit} photos`}
         </span>
       </motion.header>
 
@@ -634,9 +788,11 @@ export default function AlbumBook() {
             <motion.aside
               className="fixed top-0 left-0 bottom-0 z-50 w-[290px] max-w-[85vw] p-4 flex flex-col"
               style={{
-                background: "rgba(255,255,255,0.97)",
-                borderRight: "1px solid rgba(0,0,0,0.08)",
-                boxShadow: "0 14px 36px rgba(0,0,0,0.16)",
+                background: "rgba(245,239,230,0.97)",
+                backdropFilter: "blur(16px) saturate(180%)",
+                WebkitBackdropFilter: "blur(16px) saturate(180%)",
+                borderRight: "1px solid rgba(255,255,255,0.55)",
+                boxShadow: "0 8px 32px rgba(90,60,20,0.12)",
               }}
               initial={{ x: -320, opacity: 0.75 }}
               animate={{ x: 0, opacity: 1 }}
@@ -644,14 +800,14 @@ export default function AlbumBook() {
               transition={{ type: "spring", stiffness: 280, damping: 32 }}
             >
               <div className="flex items-center justify-between mb-3">
-                <span className="font-serif text-lg tracking-wide" style={{ color: "#44403C", fontWeight: 500 }}>
+                <span className="font-serif text-lg tracking-wide" style={{ color: "#1A1209", fontWeight: 500 }}>
                   Albums
                 </span>
                 <button
                   type="button"
                   onClick={() => setIsSidebarOpen(false)}
                   className="w-8 h-8 rounded-full flex items-center justify-center"
-                  style={{ color: "#A8A29E", background: "rgba(0,0,0,0.03)" }}
+                  style={{ color: "#5C4A32", background: "rgba(0,0,0,0.03)" }}
                 >
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                     <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -663,7 +819,7 @@ export default function AlbumBook() {
                 type="button"
                 onClick={handleAddNewAlbum}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-sans"
-                style={{ background: "#1E1E1E", color: "#FFFFFF", border: "1px solid #1E1E1E", fontWeight: 600 }}
+                style={{ background: "#1e1e1e", color: "#F5EFE6", border: "1px solid #1e1e1e", fontWeight: 600 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                   <path
@@ -687,8 +843,8 @@ export default function AlbumBook() {
                     onClick={() => setActiveTab(tab.id)}
                     className="px-2 py-1.5 rounded-lg text-[11px] font-sans"
                     style={{
-                      background: activeTab === tab.id ? "rgba(68,64,60,0.14)" : "rgba(0,0,0,0.03)",
-                      color: activeTab === tab.id ? "#292524" : "#78716C",
+                      background: activeTab === tab.id ? "rgba(139,99,67,0.14)" : "rgba(0,0,0,0.03)",
+                      color: activeTab === tab.id ? "#1A1209" : "#5C4A32",
                       border: "1px solid rgba(0,0,0,0.08)",
                     }}
                   >
@@ -704,8 +860,8 @@ export default function AlbumBook() {
                       key={album.id}
                       className="rounded-xl p-2.5"
                       style={{
-                        background: activeAlbumId === album.id ? "rgba(68,64,60,0.10)" : "rgba(0,0,0,0.03)",
-                        border: "1px solid rgba(0,0,0,0.08)",
+                        background: activeAlbumId === album.id ? "rgba(139,99,67,0.12)" : "rgba(255,255,255,0.35)",
+                        border: "1px solid rgba(255,255,255,0.55)",
                       }}
                     >
                       <button
@@ -718,7 +874,7 @@ export default function AlbumBook() {
                           if (coverSrc) {
                             return (
                               <div className="w-full h-14 rounded-md overflow-hidden"
-                                style={{ background: "rgba(255,255,255,0.72)", border: "1px solid rgba(0,0,0,0.06)" }}>
+                                style={{ background: "rgba(237,224,208,0.72)", border: "1px solid rgba(255,255,255,0.55)" }}>
                                 <img
                                   src={coverSrc}
                                   alt={`${album.name} cover`}
@@ -731,14 +887,14 @@ export default function AlbumBook() {
 
                           return (
                             <div className="w-full h-14 rounded-md flex items-center justify-center"
-                              style={{ background: "rgba(255,255,255,0.72)", border: "1px solid rgba(0,0,0,0.06)" }}>
-                              <svg width="28" height="22" viewBox="0 0 28 22" fill="none" stroke="#79716B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                              style={{ background: "rgba(237,224,208,0.72)", border: "1px solid rgba(255,255,255,0.55)" }}>
+                              <svg width="28" height="22" viewBox="0 0 28 22" fill="none" stroke="#8B6343" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M2 6.2C2 4.4 3.4 3 5.2 3h6.6l1.7 2h9.3c1.8 0 3.2 1.4 3.2 3.2v8.6c0 1.8-1.4 3.2-3.2 3.2H5.2C3.4 20 2 18.6 2 16.8V6.2Z" />
                               </svg>
                             </div>
                           );
                         })()}
-                        <p className="mt-1.5 text-[11px] font-sans truncate" style={{ color: "#44403C" }}>
+                        <p className="mt-1.5 text-[11px] font-sans truncate" style={{ color: "#1A1209" }}>
                           {album.name}
                         </p>
                       </button>
@@ -747,7 +903,7 @@ export default function AlbumBook() {
                           type="button"
                           onClick={() => handleToggleFavorite(album.id)}
                           className="w-6 h-6 rounded-full flex items-center justify-center"
-                          style={{ background: "rgba(255,255,255,0.75)" }}
+                          style={{ background: "rgba(237,224,208,0.75)" }}
                         >
                           {album.isFavorite ? (
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ color: "#EF4444" }}>
@@ -764,7 +920,7 @@ export default function AlbumBook() {
                             type="button"
                             onClick={() => setMenuAlbumId((prev) => (prev === album.id ? null : album.id))}
                             className="w-6 h-6 rounded-full flex items-center justify-center"
-                            style={{ background: "rgba(255,255,255,0.75)", color: "#78716C" }}
+                            style={{ background: "rgba(237,224,208,0.75)", color: "#5C4A32" }}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                               <circle cx="5" cy="12" r="1.6" />
@@ -776,14 +932,14 @@ export default function AlbumBook() {
                             {menuAlbumId === album.id && (
                               <motion.div
                                 className="absolute right-0 mt-1 w-28 rounded-lg overflow-hidden z-[90]"
-                                style={{ background: "white", border: "1px solid rgba(0,0,0,0.10)", boxShadow: "0 10px 26px rgba(0,0,0,0.16)" }}
+                                style={{ background: "#EDE0D0", border: "1px solid rgba(255,255,255,0.55)", boxShadow: "0 8px 32px rgba(90,60,20,0.12)" }}
                                 initial={{ opacity: 0, y: 4, scale: 0.98 }}
                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                 exit={{ opacity: 0, y: 4, scale: 0.98 }}
                               >
-                                <button type="button" onClick={() => handleRenameAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: "#44403C" }}>Rename</button>
-                                <button type="button" onClick={() => handleDeleteAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: album.id === "album-1" ? "#A8A29E" : "#44403C" }} disabled={album.id === "album-1"}>Delete</button>
-                                <button type="button" onClick={() => handleShareAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: "#44403C" }}>Share</button>
+                                <button type="button" onClick={() => handleRenameAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: "#1A1209" }}>Rename</button>
+                                <button type="button" onClick={() => handleDeleteAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: album.id === "album-1" ? "#8B6343" : "#1A1209" }} disabled={album.id === "album-1"}>Delete</button>
+                                <button type="button" onClick={() => handleShareAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: "#1A1209" }}>Share</button>
                               </motion.div>
                             )}
                           </AnimatePresence>
@@ -828,7 +984,7 @@ export default function AlbumBook() {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const cx = e.clientX - rect.left;
                 const cy = e.clientY - rect.top;
-                const edgeW = Math.max(44, Math.floor(rect.width  * 0.2));
+                const edgeW = Math.max(44, Math.floor(rect.width * 0.2));
                 // Rotated mobile: top strip = prev, bottom strip = next (full width)
                 const inCorner = isMobile
                   ? (cy < rect.height * 0.28 || cy > rect.height * 0.72)
@@ -860,8 +1016,8 @@ export default function AlbumBook() {
                 else if (cy > rect.height - stripH && liveIdx > 0) { markCornerTap(); goPrev(); }
               } else {
                 // Desktop: bottom-left = prev, bottom-right = next
-                const rightClear  = Math.max(20, Math.floor(34 * bookScale));
-                const leftClear   = Math.max(18, Math.floor(28 * bookScale));
+                const rightClear = Math.max(20, Math.floor(34 * bookScale));
+                const leftClear = Math.max(18, Math.floor(28 * bookScale));
                 const bottomClear = Math.max(28, Math.floor(49 * bookScale));
                 const inBottomStrip = cy > rect.height - bottomClear;
                 if (inBottomStrip && cx > rect.width - rightClear && !atEnd) { goNext(); }
@@ -889,11 +1045,13 @@ export default function AlbumBook() {
               <div className="absolute top-0 h-full pointer-events-none"
                 style={{
                   left: isMobile
-                    ? PAGE_W * bookScale - 3          // spine inside rotation wrapper — unused visually but harmless
+                    ? PAGE_W * bookScale - 3
                     : PAGE_W * bookScale - 3,
                   width: 6, zIndex: 20,
                   background: "linear-gradient(to right,rgba(0,0,0,0.10) 0%,rgba(0,0,0,0.20) 40%,rgba(0,0,0,0.20) 60%,rgba(0,0,0,0.10) 100%)",
-                  display: isMobile ? "none" : "block", // spine drawn inside rotation on mobile
+                  display: isMobile ? "none" : "block",
+                  opacity: isFlipping ? 0 : 1,
+                  transition: "opacity 0.18s ease",
                 }} />
 
               {/* On mobile the book is rotated -90° (CCW) so the landscape spread
@@ -903,10 +1061,10 @@ export default function AlbumBook() {
               <div style={{
                 position: "absolute",
                 ...(isMobile ? {
-                  width:  visualH,                        // unrotated width
+                  width: visualH,                        // unrotated width
                   height: visualW,                        // unrotated height
-                  left:   (visualW - visualH) / 2,       // negative → centered
-                  top:    (visualH - visualW) / 2,       // positive → centered
+                  left: (visualW - visualH) / 2,       // negative → centered
+                  top: (visualH - visualW) / 2,       // positive → centered
                   transform: "rotate(-90deg)",
                   transformOrigin: "center",
                 } : {
@@ -914,7 +1072,7 @@ export default function AlbumBook() {
                   width: bookNaturalW * bookScale,
                   height: PAGE_H * bookScale,
                 }),
-                overflow: "hidden",
+                overflow: "visible",
               }}>
                 {/* Spine inside rotation so it appears correctly on mobile */}
                 {isMobile && (
@@ -922,6 +1080,8 @@ export default function AlbumBook() {
                     style={{
                       left: PAGE_W * bookScale - 3, width: 6, zIndex: 20,
                       background: "linear-gradient(to right,rgba(0,0,0,0.10) 0%,rgba(0,0,0,0.20) 40%,rgba(0,0,0,0.20) 60%,rgba(0,0,0,0.10) 100%)",
+                      opacity: isFlipping ? 0 : 1,
+                      transition: "opacity 0.18s ease",
                     }} />
                 )}
                 <div style={{
@@ -929,6 +1089,21 @@ export default function AlbumBook() {
                   width: bookNaturalW, height: PAGE_H,
                   transform: `scale(${bookScale})`, transformOrigin: "top left",
                 }}>
+                  {/* Hardcover Base (Thick White Edge) */}
+                  <div style={{
+                    position: "absolute",
+                    top: -4, left: -10, right: -10, bottom: -4,
+                    backgroundColor: "#F9F9F9",
+                    borderRadius: 12,
+                    boxShadow: "inset -3px 0 6px rgba(0,0,0,0.05), inset 3px 0 6px rgba(0,0,0,0.05)",
+                    zIndex: 0,
+                  }}>
+                    {/* Outer thick cylindrical highlight */}
+                    <div className="absolute inset-0 rounded-xl pointer-events-none" style={{
+                      background: "linear-gradient(to right, rgba(255,255,255,1) 0%, rgba(200,200,200,0.1) 5%, rgba(200,200,200,0.1) 95%, rgba(255,255,255,1) 100%)",
+                    }} />
+                  </div>
+
                   <HTMLFlipBook
                     key={`${activeAlbumId}-flip`}
                     ref={bookRef}
@@ -944,6 +1119,15 @@ export default function AlbumBook() {
                     showCover={false}
                     mobileScrollSupport={false}
                     onFlip={(e: any) => setCurrentPage(e.data)}
+                    onChangeState={(e: any) => {
+                      if (e.data === "flipping") {
+                        if (flipHalfTimerRef.current) clearTimeout(flipHalfTimerRef.current);
+                        flipHalfTimerRef.current = setTimeout(() => setIsFlipping(true), 180);
+                      } else {
+                        if (flipHalfTimerRef.current) { clearTimeout(flipHalfTimerRef.current); flipHalfTimerRef.current = null; }
+                        setIsFlipping(false);
+                      }
+                    }}
                     className="album-flip"
                     style={{ position: "relative", zIndex: 5 }}
                     startZIndex={5}
@@ -958,6 +1142,7 @@ export default function AlbumBook() {
                     {pageSequence.map((pageIdx, renderIdx) => (
                       <AlbumPage
                         key={`${pageIdx}-${renderIdx}`}
+                        albumId={activeAlbumId}
                         pageIndex={pageIdx}
                         isLeft={pageIdx % 2 === 0}
                         images={getPageImages(pageIdx)}
@@ -968,6 +1153,16 @@ export default function AlbumBook() {
                         onStickerPanelOpen={handleStickerPanelOpen}
                         pageNumber={pageIdx + 1}
                         templateId={getPageTemplateId(pageIdx)}
+                        moodboardImages={moodboardImages}
+                        onMoodboardImagesChange={handleMoodboardImagesChange}
+                        moodboardTexts={moodboardTexts}
+                        onMoodboardTextsChange={handleMoodboardTextsChange}
+                        bgImageUrl={bgImageUrl}
+                        drawings={drawings}
+                        onDrawingSave={handleDrawingSave}
+                        isDrawingActive={drawingPageIndex === pageIdx}
+                        onStartDrawing={(idx) => setDrawingPageIndex(idx)}
+                        onStopDrawing={() => setDrawingPageIndex(null)}
                       />
                     ))}
                   </HTMLFlipBook>
@@ -1022,19 +1217,24 @@ export default function AlbumBook() {
                 const fn = diff > 0 ? goNext : goPrev;
                 for (let j = 0; j < steps; j++) setTimeout(fn, j * 740);
               }}
-              animate={{ width: i === spreadIndex ? 20 : 6, background: i === spreadIndex ? "#79716B" : "#C8C4C0" }}
+              animate={{
+                width: i === spreadIndex ? 20 : 6,
+                background: i === spreadIndex
+                  ? (isBgDark ? "#F8F9FA" : "#8B6343")
+                  : (isBgDark ? "rgba(255,255,255,0.35)" : "#C4A882")
+              }}
               transition={{ type: "spring", stiffness: 420, damping: 32 }}
             />
           ))}
         </div>
-        <p className="text-xs font-sans tracking-wide" style={{ color: "#A8A29E" }}>
+        <p className="text-xs font-sans tracking-wide transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#5C4A32" }}>
           Spread {spreadIndex + 1} / {totalSpreads}
         </p>
       </motion.div>
 
       {/* â”€â”€ Onboarding tip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <AnimatePresence>
-        {!isLoading && Object.keys(images).length === 0 && (
+        {!isLoading && Object.keys(images).length === 0 && stickers.length === 0 && moodboardImages.length === 0 && (
           <motion.div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-sans whitespace-nowrap"
             style={{ background: "rgba(87,83,78,0.90)", color: "rgba(255,255,255,0.88)", backdropFilter: "blur(8px)", boxShadow: "0 4px 16px rgba(0,0,0,0.18)", zIndex: 40 }}
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ delay: 0.6 }}>
@@ -1069,11 +1269,11 @@ export default function AlbumBook() {
             >
               <div
                 className="w-[331px] max-w-[calc(100vw-2rem)] rounded-2xl px-4 py-5 sm:w-[420px] sm:max-w-[calc(100vw-3rem)] sm:rounded-[24px] sm:px-6 sm:py-6 md:w-[460px] md:max-w-[460px] md:px-7 md:py-7 lg:w-[480px] lg:max-w-[480px]"
-                style={{ background: "#F5F5F4", boxShadow: "0 22px 48px rgba(0,0,0,0.20)" }}
+                style={{ background: "#EDE0D0", border: "1px solid rgba(255,255,255,0.55)", boxShadow: "0 8px 32px rgba(90,60,20,0.12)" }}
               >
                 {albumDialog.type === "delete" ? (
                   <>
-                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[21px] md:text-[25px]" style={{ color: "#1C1917", fontWeight: 500 }}>
+                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[21px] md:text-[25px]" style={{ color: "#1A1209", fontWeight: 500 }}>
                       Are you sure, you want to delete
                       <br />
                       {dialogAlbumName}?
@@ -1083,7 +1283,7 @@ export default function AlbumBook() {
                         type="button"
                         onClick={confirmDeleteAlbum}
                         className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
-                        style={{ border: "3px solid #3F3F46", color: "#1C1917", background: "transparent", fontWeight: 400 }}
+                        style={{ border: "3px solid #1e1e1e", color: "#1A1209", background: "transparent", fontWeight: 400 }}
                       >
                         Yes, delete
                       </button>
@@ -1091,7 +1291,7 @@ export default function AlbumBook() {
                         type="button"
                         onClick={closeAlbumDialog}
                         className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
-                        style={{ color: "#FAFAF9", background: "#18181B", fontWeight: 500 }}
+                        style={{ color: "#F5EFE6", background: "#1e1e1e", fontWeight: 500 }}
                       >
                         Cancel
                       </button>
@@ -1099,7 +1299,7 @@ export default function AlbumBook() {
                   </>
                 ) : (
                   <>
-                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[21px] md:text-[25px]" style={{ color: "#1C1917", fontWeight: 500 }}>
+                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[21px] md:text-[25px]" style={{ color: "#1A1209", fontWeight: 500 }}>
                       Rename Album
                     </p>
                     <input
@@ -1111,7 +1311,7 @@ export default function AlbumBook() {
                         if (e.key === "Escape") closeAlbumDialog();
                       }}
                       className="mt-5 w-full h-12 rounded-xl px-3.5 text-base font-sans outline-none sm:mt-5 sm:h-12 sm:rounded-xl sm:px-4 sm:text-[17px] md:h-[50px]"
-                      style={{ border: "2px solid #D6D3D1", color: "#1C1917", background: "rgba(255,255,255,0.95)" }}
+                      style={{ border: "2px solid #8B6343", color: "#1A1209", background: "rgba(245,239,230,0.95)" }}
                       placeholder="Album name"
                     />
                     <div className="mt-5 grid grid-cols-2 place-items-center gap-2 sm:mt-5 sm:grid-cols-2 sm:gap-3">
@@ -1119,7 +1319,7 @@ export default function AlbumBook() {
                         type="button"
                         onClick={confirmRenameAlbum}
                         className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
-                        style={{ color: "#FAFAF9", background: "#18181B", fontWeight: 500 }}
+                        style={{ color: "#F5EFE6", background: "#1e1e1e", fontWeight: 500 }}
                       >
                         Save
                       </button>
@@ -1127,7 +1327,7 @@ export default function AlbumBook() {
                         type="button"
                         onClick={closeAlbumDialog}
                         className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
-                        style={{ border: "3px solid #3F3F46", color: "#1C1917", background: "transparent", fontWeight: 400 }}
+                        style={{ border: "3px solid #1e1e1e", color: "#1A1209", background: "transparent", fontWeight: 400 }}
                       >
                         Cancel
                       </button>
@@ -1161,64 +1361,64 @@ export default function AlbumBook() {
             >
               <div
                 className="w-[331px] max-w-[calc(100vw-2rem)] h-[480px] rounded-2xl px-4 py-5 sm:w-[420px] sm:px-6 sm:py-6 flex flex-col"
-                style={{ background: "#F5F5F4", boxShadow: "0 22px 48px rgba(0,0,0,0.20)" }}
+                style={{ background: "#EDE0D0", border: "1px solid rgba(255,255,255,0.55)", boxShadow: "0 8px 32px rgba(90,60,20,0.12)" }}
               >
                 {templateModalStep === "pick" ? (
                   <>
-                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1C1917", fontWeight: 500 }}>
+                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1A1209", fontWeight: 500 }}>
                       Choose a Template
                     </p>
                     <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-2">
-                    <div className="p-2">
-  <div className="grid grid-cols-2 gap-3">
-                      {([1, 2, 3, 4, 5] as (1 | 2 | 3 | 4 | 5)[]).map((tid) => (
-                        <motion.button
-                          key={tid}
-                          type="button"
-                          onClick={() => handleConfirmTemplate(tid)}
-                          className="flex flex-col items-center gap-2 rounded-xl p-3"
-                          style={{ background: "rgba(255,255,255,0.90)", border: "1.5px solid rgba(0,0,0,0.09)" }}
-                          whileHover={{ scale: 1.03, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
-                          whileTap={{ scale: 0.97 }}
-                        >
-                          <TemplatePreview templateId={tid} />
-                          <span className="text-[11px] font-sans font-medium" style={{ color: "#57534E" }}>
-                            Style {tid}
-                          </span>
-                        </motion.button>
-                      ))}
-                      <motion.button
-                        type="button"
-                        className="col-span-2 flex items-center justify-center gap-2 rounded-xl p-3"
-                        style={{ background: "rgba(255,255,255,0.90)", border: "1.5px solid rgba(0,0,0,0.09)" }}
-                        whileHover={{ scale: 1.02, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
-                        whileTap={{ scale: 0.97 }}
-                        onClick={() => setTemplateModalStep("custom")}
-                      >
-                        <span className="text-[13px] font-sans font-medium" style={{ color: "#57534E" }}>Custom Mix</span>
-                        <span className="text-[11px] font-sans" style={{ color: "#A8A29E" }}>— choose 2–4 styles</span>
-                      </motion.button>
-                    </div>
-                    </div>
+                      <div className="p-2">
+                        <div className="grid grid-cols-2 gap-3">
+                          {([1, 2, 3, 4, 5] as (1 | 2 | 3 | 4 | 5)[]).map((tid) => (
+                            <motion.button
+                              key={tid}
+                              type="button"
+                              onClick={() => handleConfirmTemplate(tid)}
+                              className="flex flex-col items-center gap-2 rounded-xl p-3"
+                              style={{ background: "rgba(245,239,230,0.45)", backdropFilter: "blur(16px) saturate(180%)", border: "1px solid rgba(255,255,255,0.55)", boxShadow: "0 8px 32px rgba(90,60,20,0.12)" }}
+                              whileHover={{ scale: 1.03, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
+                              whileTap={{ scale: 0.97 }}
+                            >
+                              <TemplatePreview templateId={tid} />
+                              <span className="text-[11px] font-sans font-medium" style={{ color: "#1A1209" }}>
+                                Style {tid}
+                              </span>
+                            </motion.button>
+                          ))}
+                          <motion.button
+                            type="button"
+                            className="col-span-2 flex items-center justify-center gap-2 rounded-xl p-3"
+                            style={{ background: "rgba(255,255,255,0.90)", border: "1.5px solid rgba(0,0,0,0.09)" }}
+                            whileHover={{ scale: 1.02, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => setTemplateModalStep("custom")}
+                          >
+                            <span className="text-[13px] font-sans font-medium" style={{ color: "#1A1209" }}>Custom Mix</span>
+                            <span className="text-[11px] font-sans" style={{ color: "#5C4A32" }}>— choose 2–4 styles</span>
+                          </motion.button>
+                        </div>
+                      </div>
                     </div>
                     <div className="mt-4">
                       <button
                         type="button"
                         onClick={() => setShowTemplateModal(false)}
                         className="w-full h-11 rounded-full text-[15px] font-sans"
-                        style={{ background: "#18181B", color: "#FAFAF9", fontWeight: 500 }}
+                        style={{ background: "#1e1e1e", color: "#F5EFE6", fontWeight: 500 }}
                       >
                         Cancel
                       </button>
                     </div>
-                    
-                  </> 
+
+                  </>
                 ) : (
                   <>
-                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1C1917", fontWeight: 500 }}>
+                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1A1209", fontWeight: 500 }}>
                       Custom Mix
                     </p>
-                    <p className="text-center text-[12px] font-sans mt-1" style={{ color: "#A8A29E" }}>
+                    <p className="text-center text-[12px] font-sans mt-1" style={{ color: "#5C4A32" }}>
                       Select 2–4 styles to mix across pages
                     </p>
                     <div className="mt-4 flex-1 overflow-y-auto overflow-x-hidden pr-2">
@@ -1232,8 +1432,10 @@ export default function AlbumBook() {
                                 type="button"
                                 className="flex flex-col items-center gap-2 rounded-xl p-3 relative"
                                 style={{
-                                  background: selected ? "rgba(68,64,60,0.10)" : "rgba(255,255,255,0.90)",
-                                  border: selected ? "1.5px solid #78716C" : "1.5px solid rgba(0,0,0,0.09)",
+                                  background: selected ? "rgba(139,99,67,0.15)" : "rgba(245,239,230,0.45)",
+                                  backdropFilter: "blur(16px) saturate(180%)",
+                                  border: selected ? "1.5px solid #8B6343" : "1px solid rgba(255,255,255,0.55)",
+                                  boxShadow: "0 8px 32px rgba(90,60,20,0.12)",
                                 }}
                                 whileTap={{ scale: 0.97 }}
                                 onClick={() => {
@@ -1245,11 +1447,11 @@ export default function AlbumBook() {
                                 }}
                               >
                                 <TemplatePreview templateId={tid} />
-                                <span className="text-[11px] font-sans font-medium" style={{ color: "#57534E" }}>
+                                <span className="text-[11px] font-sans font-medium" style={{ color: "#1A1209" }}>
                                   Style {tid}
                                 </span>
                                 {selected && (
-                                  <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "#44403C" }}>
+                                  <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "#1e1e1e" }}>
                                     <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
                                       <path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>
@@ -1266,7 +1468,7 @@ export default function AlbumBook() {
                         type="button"
                         onClick={() => setTemplateModalStep("pick")}
                         className="h-11 rounded-full text-[15px] font-sans"
-                        style={{ border: "2px solid #D6D3D1", color: "#57534E", background: "transparent" }}
+                        style={{ border: "2px solid #8B6343", color: "#5C4A32", background: "transparent" }}
                       >
                         Back
                       </button>
@@ -1276,8 +1478,8 @@ export default function AlbumBook() {
                         onClick={() => handleConfirmCustomStyle(pendingCustomStyles)}
                         className="h-11 rounded-full text-[15px] font-sans"
                         style={{
-                          background: pendingCustomStyles.length < 2 ? "rgba(24,24,27,0.35)" : "#18181B",
-                          color: "#FAFAF9",
+                          background: pendingCustomStyles.length < 2 ? "rgba(30,30,30,0.35)" : "#1e1e1e",
+                          color: "#F5EFE6",
                           fontWeight: 500,
                         }}
                       >
@@ -1318,15 +1520,15 @@ function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 | 5 }) {
   const gw = W - px * 2;
   const gh = H - py * 2;
   const gap = 3;
-  const slotFill = "rgb(214,211,209)";
-  const slotBg = "rgb(250,250,249)";
+  const slotFill = "rgb(196,168,130)";
+  const slotBg = "rgb(245,239,230)";
   type R = { x: number; y: number; w: number; h: number };
   const slots: R[] = [];
 
   if (templateId === 5) {
     return (
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        <rect width={W} height={H} rx={5} fill="#F3F2F0" />
+        <rect width={W} height={H} rx={5} fill="#EDE0D0" />
       </svg>
     );
   }
@@ -1350,9 +1552,9 @@ function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 | 5 }) {
     const rth = Math.round(gh * (170 / 554));
     const rbh = gh - rth - gap;
     slots.push(
-      { x: px,            y: py,             w: cw, h: lth },
-      { x: px,            y: py + lth + gap, w: cw, h: lbh },
-      { x: px + cw + gap, y: py,             w: cw, h: rth },
+      { x: px, y: py, w: cw, h: lth },
+      { x: px, y: py + lth + gap, w: cw, h: lbh },
+      { x: px + cw + gap, y: py, w: cw, h: rth },
       { x: px + cw + gap, y: py + rth + gap, w: cw, h: rbh },
     );
   } else {
@@ -1360,8 +1562,8 @@ function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 | 5 }) {
     const toph = Math.round(gh * (344 / 554));
     const both = gh - toph - gap;
     slots.push(
-      { x: px,            y: py,              w: gw, h: toph },
-      { x: px,            y: py + toph + gap, w: cw, h: both },
+      { x: px, y: py, w: gw, h: toph },
+      { x: px, y: py + toph + gap, w: cw, h: both },
       { x: px + cw + gap, y: py + toph + gap, w: cw, h: both },
     );
   }
@@ -1387,11 +1589,12 @@ function NavButton({ direction, onClick, disabled, rotated }: {
     <motion.button
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center justify-center rounded-full bg-white"
+      className="flex items-center justify-center rounded-full"
       style={{
         width: 44, height: 44,
-        boxShadow: "0 2px 14px rgba(0,0,0,0.12)",
-        border: "1px solid rgba(0,0,0,0.04)",
+        background: "rgba(237,224,208,0.85)",
+        boxShadow: "0 2px 14px rgba(90,60,20,0.12)",
+        border: "1px solid rgba(255,255,255,0.55)",
         cursor: disabled ? "default" : "pointer",
         flexShrink: 0,
       }}
@@ -1401,9 +1604,10 @@ function NavButton({ direction, onClick, disabled, rotated }: {
       transition={{ duration: 0.15 }}
     >
       {direction === "prev"
-        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#57534E" strokeWidth="2.3" strokeLinecap="round" style={rotated ? { transform: "rotate(-90deg)" } : undefined}><polyline points="15 18 9 12 15 6" /></svg>
-        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#57534E" strokeWidth="2.3" strokeLinecap="round" style={rotated ? { transform: "rotate(-90deg)" } : undefined}><polyline points="9 18 15 12 9 6" /></svg>
+        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5C4A32" strokeWidth="2.3" strokeLinecap="round" style={rotated ? { transform: "rotate(-90deg)" } : undefined}><polyline points="15 18 9 12 15 6" /></svg>
+        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5C4A32" strokeWidth="2.3" strokeLinecap="round" style={rotated ? { transform: "rotate(-90deg)" } : undefined}><polyline points="9 18 15 12 9 6" /></svg>
       }
     </motion.button>
   );
 }
+

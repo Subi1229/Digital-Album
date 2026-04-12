@@ -19,7 +19,7 @@ import {
 } from "@/lib/stickerUtils";
 
 const isDev = process.env.NODE_ENV === "development";
-const dbg = isDev ? (...a: unknown[]) => console.log("[StickerPanel]", ...a) : () => {};
+const dbg = isDev ? (...a: unknown[]) => console.log("[StickerPanel]", ...a) : () => { };
 
 type ProcessingStep = "idle" | "checking" | "needs-removal" | "processing" | "done";
 
