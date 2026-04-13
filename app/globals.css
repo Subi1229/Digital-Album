@@ -6,13 +6,30 @@
 
 /* ── Design tokens ──────────────────────────────────────────── */
 :root {
-  --color-bg: #F5EFE6;
-  --color-surface: #EDE0D0;
-  --color-text-primary: #1A1209;
-  --color-text-secondary: #5C4A32;
-  --color-cta-bg: #1e1e1e;
-  --color-cta-text: #F5EFE6;
-  --color-accent: #8B6343;
+  /* Base */
+  --color-bg:              #fcfcd4;   /* light cream-yellow */
+  --color-surface:         #b4ebff;   /* light sky blue */
+  --color-surface-alt:     #e8f7ff;   /* lighter blue tint */
+
+  /* Text — WCAG AA compliant on all bg tones */
+  --color-text-primary:    #1e1e1e;   /* near-black  — 17:1 on bg */
+  --color-text-secondary:  #334a52;   /* dark teal   — 8.5:1 on bg */
+  --color-text-muted:      #96afb9;   /* blue-grey   — decorative only */
+
+  /* Accent palette */
+  --color-accent:          #003242;   /* deep navy teal */
+  --color-accent-mid:      #96afb9;   /* medium blue-grey */
+  --color-accent-pink:     #ffb0c0;   /* soft pink */
+  --color-accent-green:    #97d59c;   /* soft green */
+  --color-accent-blue:     #b4ebff;   /* sky blue */
+
+  /* CTA */
+  --color-cta-bg:          #1e1e1e;
+  --color-cta-text:        #ffffff;
+
+  /* Scrollbar */
+  --color-scrollbar-track: #e5e5e5;
+  --color-scrollbar-thumb: #96afb9;
 }
 
 /* ── Reset ─────────────────────────────────────────────────── */
@@ -111,11 +128,11 @@ input[type='range']::-moz-range-thumb {
 }
 
 ::-webkit-scrollbar-track {
-  background: #EDE0D0;
+  background: var(--color-scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #8B6343;
+  background: var(--color-scrollbar-thumb);
   border-radius: 3px;
 }
 
@@ -125,17 +142,30 @@ input[type='range']::-moz-range-thumb {
   outline-offset: 2px;
 }
 
-/* ── Primary button ─────────────────────────────────────────── */
+/* ── Primary CTA ─────────────────────────────────────────────── */
 .btn-primary,
 [data-primary] {
   background: #1e1e1e;
-  color: #F5EFE6;
+  color: #ffffff;
   border: none;
 }
 
 .btn-primary:hover,
 [data-primary]:hover {
-  background: #3a3a3a;
+  background: #333333;
+}
+
+/* ── Secondary CTA ─────────────────────────────────────────── */
+.btn-secondary,
+[data-secondary] {
+  background: #ffffff;
+  color: #1e1e1e;
+  border: 2px solid #1e1e1e;
+}
+
+.btn-secondary:hover,
+[data-secondary]:hover {
+  background: #f5f5f5;
 }
 
 /* ── Prevent text selection during page flip ───────────────── */

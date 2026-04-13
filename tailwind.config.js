@@ -11,6 +11,19 @@ module.exports = {
         sans: ["Inter", "system-ui", "sans-serif"],
       },
       colors: {
+        /* ── Brand palette ── */
+        brand: {
+          bg:        "#fcfcd4",
+          surface:   "#b4ebff",
+          "surface-alt": "#e8f7ff",
+          navy:      "#003242",
+          teal:      "#334a52",
+          "blue-grey": "#96afb9",
+          pink:      "#ffb0c0",
+          green:     "#97d59c",
+          blue:      "#b4ebff",
+          black:     "#1e1e1e",
+        },
         stone: {
           50: "#FAFAF9",
           100: "#F5F5F4",

@@ -303,7 +303,7 @@ export default function AlbumBook() {
       setIsMobile(mobile);
       if (mobile) {
         // Book is shown rotated 90° — PAGE_H becomes the visual width
-        setBookScale(Math.min(1.1, (window.innerWidth - 16) / PAGE_H));
+        setBookScale(Math.min(1.1, (window.innerWidth - 40 - 64 - 16) / PAGE_H));
       } else {
         const availW = window.innerWidth - (44 + 20) * 2 - 32;
         const availH = window.innerHeight - 160;
@@ -702,12 +702,12 @@ export default function AlbumBook() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen"
-        style={{ background: "#F5EFE6" }}>
+        style={{ background: "#ffffff" }}>
         <motion.div className="flex flex-col items-center gap-4"
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <motion.div className="w-9 h-9 rounded-full border-[2.5px] border-stone-300 border-t-stone-500"
             animate={{ rotate: 360 }} transition={{ duration: 0.85, repeat: Infinity, ease: "linear" }} />
-          <p className="text-sm font-medium font-sans tracking-wide" style={{ color: "#5C4A32" }}>Opening your album...</p>
+          <p className="text-sm font-medium font-sans tracking-wide" style={{ color: "#334a52" }}>Opening your album...</p>
         </motion.div>
       </div>
     );
@@ -718,59 +718,123 @@ export default function AlbumBook() {
       style={{
         background: bgImageUrl
           ? `url(${bgImageUrl}) center/cover no-repeat fixed`
-          : "#F5EFE6",
+          : "#ffffff",
         imageRendering: "high-quality" as React.CSSProperties["imageRendering"]
       }}>
 
       <input type="file" accept="image/*" className="hidden" ref={bgInputRef} onChange={handleBgChange} />
 
       {/* ———————————————————————————————————————————————————————————————————————————————— */}
-      <motion.header className="w-full flex items-center justify-between px-6 pt-6 pb-3"
-        initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.06, duration: 0.4 }}>
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            aria-label="Open album sidebar"
-            onClick={() => setIsSidebarOpen(true)}
-            className="w-8 h-8 rounded-md flex items-center justify-center"
-            style={{ border: "1px solid rgba(0,0,0,0.12)", color: "#5C4A32", background: "rgba(245,239,230,0.55)" }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <path d="M4 7h16M4 12h16M4 17h16" />
-            </svg>
-          </button>
+      {/* Desktop/tablet: normal header in document flow */}
+      {!isMobile && (
+        <motion.header className="w-full flex items-center justify-between px-6 pt-6 pb-3"
+          initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06, duration: 0.4 }}>
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              aria-label="Open album sidebar"
+              onClick={() => setIsSidebarOpen(true)}
+              className="w-8 h-8 rounded-md flex items-center justify-center"
+              style={{ border: "1px solid rgba(0,0,0,0.12)", color: "#334a52", background: "rgba(224,244,255,0.55)" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+            </button>
 
-          <button
-            type="button"
-            aria-label="Change album background"
-            onClick={() => bgInputRef.current?.click()}
-            className="w-8 h-8 rounded-md flex items-center justify-center ml-1"
-            style={{ border: "1px solid rgba(210,140,170,0.35)", color: "#C06B90", background: "rgba(255,240,245,0.70)" }}
-            title="Set Album Background"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21 15 16 10 5 21" />
-            </svg>
-          </button>
+            <button
+              type="button"
+              aria-label="Change album background"
+              onClick={() => bgInputRef.current?.click()}
+              className="w-8 h-8 rounded-md flex items-center justify-center ml-1"
+              style={{ border: "1px solid rgba(0,0,0,0.12)", color: "#334a52", background: "rgba(224,244,255,0.55)" }}
+              title="Set Album Background"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            </button>
 
-          <div className="flex flex-col leading-tight ml-2">
-            <span className="font-serif text-lg tracking-wide transition-colors" style={{ color: isBgDark ? "#F8F9FA" : "#1A1209", fontWeight: 500 }}>
-              My Photo Album
-            </span>
-            <span className="text-[12px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#5C4A32" }}>
-              {activeAlbumName}
-            </span>
+            <div className="flex flex-col leading-tight ml-2">
+              <span className="font-serif text-lg tracking-wide transition-colors" style={{ color: isBgDark ? "#fcfcd4" : "#1e1e1e", fontWeight: 500 }}>
+                My Photo Album
+              </span>
+              <span className="text-[12px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52" }}>
+                {activeAlbumName}
+              </span>
+            </div>
           </div>
+          <span className="text-[13px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52" }}>
+            {activeTemplateId === 5
+              ? `${moodboardCount} photos`
+              : `${Object.keys(images).length} / ${albumImageLimit} photos`}
+          </span>
+        </motion.header>
+      )}
+
+      {/* Mobile: header rotated -90° to match book landscape orientation, pinned to right (= landscape top) */}
+      {isMobile && (
+        <div style={{
+          position: "fixed",
+          zIndex: 30,
+          width: "100vh",
+          top: "50%",
+          left: "calc(100vw - 32px)",
+          transform: "translate(-50%, -50%) rotate(-90deg)",
+          pointerEvents: "none",
+        }}>
+          <motion.header className="w-full flex items-center justify-between px-6 pt-3 pb-2"
+            style={{ pointerEvents: "auto" }}
+            initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.06, duration: 0.4 }}>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                aria-label="Open album sidebar"
+                onClick={() => setIsSidebarOpen(true)}
+                className="w-8 h-8 rounded-md flex items-center justify-center"
+                style={{ border: "1px solid rgba(0,0,0,0.12)", color: "#334a52", background: "rgba(224,244,255,0.55)" }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                  <path d="M4 7h16M4 12h16M4 17h16" />
+                </svg>
+              </button>
+
+              <button
+                type="button"
+                aria-label="Change album background"
+                onClick={() => bgInputRef.current?.click()}
+                className="w-8 h-8 rounded-md flex items-center justify-center ml-1"
+                style={{ border: "1px solid rgba(0,0,0,0.12)", color: "#334a52", background: "rgba(224,244,255,0.55)" }}
+                title="Set Album Background"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+              </button>
+
+              <div className="flex flex-col leading-tight ml-2">
+                <span className="font-serif text-lg tracking-wide transition-colors" style={{ color: isBgDark ? "#fcfcd4" : "#1e1e1e", fontWeight: 500 }}>
+                  My Photo Album
+                </span>
+                <span className="text-[12px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52" }}>
+                  {activeAlbumName}
+                </span>
+              </div>
+            </div>
+            <span className="text-[13px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52" }}>
+              {activeTemplateId === 5
+                ? `${moodboardCount} photos`
+                : `${Object.keys(images).length} / ${albumImageLimit} photos`}
+            </span>
+          </motion.header>
         </div>
-        <span className="text-[13px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#5C4A32" }}>
-          {activeTemplateId === 5
-            ? `${moodboardCount} photos`
-            : `${Object.keys(images).length} / ${albumImageLimit} photos`}
-        </span>
-      </motion.header>
+      )}
 
       <AnimatePresence>
         {isSidebarOpen && (
@@ -785,177 +849,201 @@ export default function AlbumBook() {
               exit={{ opacity: 0 }}
               onClick={() => setIsSidebarOpen(false)}
             />
-            <motion.aside
-              className="fixed top-0 left-0 bottom-0 z-50 w-[290px] max-w-[85vw] p-4 flex flex-col"
-              style={{
-                background: "rgba(245,239,230,0.97)",
-                backdropFilter: "blur(16px) saturate(180%)",
-                WebkitBackdropFilter: "blur(16px) saturate(180%)",
-                borderRight: "1px solid rgba(255,255,255,0.55)",
-                boxShadow: "0 8px 32px rgba(90,60,20,0.12)",
-              }}
-              initial={{ x: -320, opacity: 0.75 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -320, opacity: 0.75 }}
-              transition={{ type: "spring", stiffness: 280, damping: 32 }}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="font-serif text-lg tracking-wide" style={{ color: "#1A1209", fontWeight: 500 }}>
-                  Albums
-                </span>
+            {/* Sidebar rotation wrapper for mobile */}
+            <div style={isMobile ? {
+              position: "fixed",
+              zIndex: 50,
+              width: "100vh",
+              height: "100vw",
+              left: "50%",
+              top: "50%",
+              transform: "translate(-50%, -50%) rotate(-90deg)",
+              pointerEvents: "none",
+            } : { position: "contents" as React.CSSProperties["position"] }}>
+              <motion.aside
+                className={isMobile ? "p-4 flex flex-col" : "fixed top-0 left-0 bottom-0 z-50 w-[290px] max-w-[85vw] p-4 flex flex-col"}
+                style={isMobile ? {
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: 290,
+                  pointerEvents: "auto",
+                  background: "rgba(255,255,255,0.97)",
+                  backdropFilter: "blur(16px) saturate(180%)",
+                  WebkitBackdropFilter: "blur(16px) saturate(180%)",
+                  borderRight: "1px solid rgba(255,255,255,0.55)",
+                  boxShadow: "0 8px 32px rgba(51,74,82,0.12)",
+                } : {
+                  background: "rgba(255,255,255,0.97)",
+                  backdropFilter: "blur(16px) saturate(180%)",
+                  WebkitBackdropFilter: "blur(16px) saturate(180%)",
+                  borderRight: "1px solid rgba(255,255,255,0.55)",
+                  boxShadow: "0 8px 32px rgba(51,74,82,0.12)",
+                }}
+                initial={{ x: -320, opacity: 0.75 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -320, opacity: 0.75 }}
+                transition={{ type: "spring", stiffness: 280, damping: 32 }}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-serif text-lg tracking-wide" style={{ color: "#1e1e1e", fontWeight: 500 }}>
+                    Albums
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSidebarOpen(false)}
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{ color: "#334a52", background: "rgba(0,0,0,0.03)" }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setIsSidebarOpen(false)}
-                  className="w-8 h-8 rounded-full flex items-center justify-center"
-                  style={{ color: "#5C4A32", background: "rgba(0,0,0,0.03)" }}
+                  onClick={handleAddNewAlbum}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-sans"
+                  style={{ background: "#1e1e1e", color: "#ffffff", border: "1px solid #1e1e1e", fontWeight: 600 }}
                 >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path
+                      fillRule="evenodd"
+                      clipRule="evenodd"
+                      d="M12 3.75a.75.75 0 0 1 .75.75v6.75h6.75a.75.75 0 0 1 0 1.5h-6.75v6.75a.75.75 0 0 1-1.5 0v-6.75H4.5a.75.75 0 0 1 0-1.5h6.75V4.5a.75.75 0 0 1 .75-.75Z"
+                    />
                   </svg>
+                  <span>Add New Album</span>
                 </button>
-              </div>
 
-              <button
-                type="button"
-                onClick={handleAddNewAlbum}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-sans"
-                style={{ background: "#1e1e1e", color: "#F5EFE6", border: "1px solid #1e1e1e", fontWeight: 600 }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <path
-                    fillRule="evenodd"
-                    clipRule="evenodd"
-                    d="M12 3.75a.75.75 0 0 1 .75.75v6.75h6.75a.75.75 0 0 1 0 1.5h-6.75v6.75a.75.75 0 0 1-1.5 0v-6.75H4.5a.75.75 0 0 1 0-1.5h6.75V4.5a.75.75 0 0 1 .75-.75Z"
-                  />
-                </svg>
-                <span>Add New Album</span>
-              </button>
-
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                {([
-                  { id: "all", label: "All Albums" },
-                  { id: "favourite", label: "Favourite" },
-                  { id: "recent", label: "Recent" },
-                ] as { id: AlbumTab; label: string }[]).map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className="px-2 py-1.5 rounded-lg text-[11px] font-sans"
-                    style={{
-                      background: activeTab === tab.id ? "rgba(139,99,67,0.14)" : "rgba(0,0,0,0.03)",
-                      color: activeTab === tab.id ? "#1A1209" : "#5C4A32",
-                      border: "1px solid rgba(0,0,0,0.08)",
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-4 pt-3 flex-1 overflow-y-auto" style={{ borderTop: "1px solid rgba(0,0,0,0.08)" }}>
-                <div className="grid grid-cols-2 gap-2">
-                  {visibleAlbums.map((album) => (
-                    <div
-                      key={album.id}
-                      className="rounded-xl p-2.5"
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  {([
+                    { id: "all", label: "All Albums" },
+                    { id: "favourite", label: "Favourite" },
+                    { id: "recent", label: "Recent" },
+                  ] as { id: AlbumTab; label: string }[]).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className="px-2 py-1.5 rounded-lg text-[11px] font-sans"
                       style={{
-                        background: activeAlbumId === album.id ? "rgba(139,99,67,0.12)" : "rgba(255,255,255,0.35)",
-                        border: "1px solid rgba(255,255,255,0.55)",
+                        background: activeTab === tab.id ? "rgba(0,50,66,0.14)" : "rgba(0,0,0,0.03)",
+                        color: activeTab === tab.id ? "#1e1e1e" : "#334a52",
+                        border: "1px solid rgba(0,0,0,0.08)",
                       }}
                     >
-                      <button
-                        type="button"
-                        onClick={() => handleSelectAlbum(album.id)}
-                        className="w-full text-left"
-                      >
-                        {(() => {
-                          const coverSrc = albumFirstSlotImages[album.id];
-                          if (coverSrc) {
-                            return (
-                              <div className="w-full h-14 rounded-md overflow-hidden"
-                                style={{ background: "rgba(237,224,208,0.72)", border: "1px solid rgba(255,255,255,0.55)" }}>
-                                <img
-                                  src={coverSrc}
-                                  alt={`${album.name} cover`}
-                                  className="w-full h-full object-cover"
-                                  draggable={false}
-                                />
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <div className="w-full h-14 rounded-md flex items-center justify-center"
-                              style={{ background: "rgba(237,224,208,0.72)", border: "1px solid rgba(255,255,255,0.55)" }}>
-                              <svg width="28" height="22" viewBox="0 0 28 22" fill="none" stroke="#8B6343" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M2 6.2C2 4.4 3.4 3 5.2 3h6.6l1.7 2h9.3c1.8 0 3.2 1.4 3.2 3.2v8.6c0 1.8-1.4 3.2-3.2 3.2H5.2C3.4 20 2 18.6 2 16.8V6.2Z" />
-                              </svg>
-                            </div>
-                          );
-                        })()}
-                        <p className="mt-1.5 text-[11px] font-sans truncate" style={{ color: "#1A1209" }}>
-                          {album.name}
-                        </p>
-                      </button>
-                      <div className="mt-1.5 flex items-center justify-between" data-album-menu-root>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleFavorite(album.id)}
-                          className="w-6 h-6 rounded-full flex items-center justify-center"
-                          style={{ background: "rgba(237,224,208,0.75)" }}
-                        >
-                          {album.isFavorite ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ color: "#EF4444" }}>
-                              <path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z" />
-                            </svg>
-                          ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" style={{ color: "#A8A29E" }}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
-                            </svg>
-                          )}
-                        </button>
-                        <div className="relative" data-album-menu-root>
-                          <button
-                            type="button"
-                            onClick={() => setMenuAlbumId((prev) => (prev === album.id ? null : album.id))}
-                            className="w-6 h-6 rounded-full flex items-center justify-center"
-                            style={{ background: "rgba(237,224,208,0.75)", color: "#5C4A32" }}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                              <circle cx="5" cy="12" r="1.6" />
-                              <circle cx="12" cy="12" r="1.6" />
-                              <circle cx="19" cy="12" r="1.6" />
-                            </svg>
-                          </button>
-                          <AnimatePresence>
-                            {menuAlbumId === album.id && (
-                              <motion.div
-                                className="absolute right-0 mt-1 w-28 rounded-lg overflow-hidden z-[90]"
-                                style={{ background: "#EDE0D0", border: "1px solid rgba(255,255,255,0.55)", boxShadow: "0 8px 32px rgba(90,60,20,0.12)" }}
-                                initial={{ opacity: 0, y: 4, scale: 0.98 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: 4, scale: 0.98 }}
-                              >
-                                <button type="button" onClick={() => handleRenameAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: "#1A1209" }}>Rename</button>
-                                <button type="button" onClick={() => handleDeleteAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: album.id === "album-1" ? "#8B6343" : "#1A1209" }} disabled={album.id === "album-1"}>Delete</button>
-                                <button type="button" onClick={() => handleShareAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: "#1A1209" }}>Share</button>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    </div>
+                      {tab.label}
+                    </button>
                   ))}
                 </div>
-              </div>
-            </motion.aside>
+
+                <div className="mt-4 pt-3 flex-1 overflow-y-auto" style={{ borderTop: "1px solid rgba(0,0,0,0.08)" }}>
+                  <div className="grid grid-cols-2 gap-2">
+                    {visibleAlbums.map((album) => (
+                      <div
+                        key={album.id}
+                        className="rounded-xl p-2.5"
+                        style={{
+                          background: activeAlbumId === album.id ? "rgba(0,50,66,0.12)" : "rgba(255,255,255,0.35)",
+                          border: activeAlbumId === album.id ? "1px solid rgba(0,50,66,0.25)" : "1px solid rgba(0,0,0,0.10)",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleSelectAlbum(album.id)}
+                          className="w-full text-left"
+                        >
+                          {(() => {
+                            const coverSrc = albumFirstSlotImages[album.id];
+                            if (coverSrc) {
+                              return (
+                                <div className="w-full h-14 rounded-md overflow-hidden"
+                                  style={{ background: "rgba(240,240,240,0.85)", border: "1px solid rgba(255,255,255,0.55)" }}>
+                                  <img
+                                    src={coverSrc}
+                                    alt={`${album.name} cover`}
+                                    className="w-full h-full object-cover"
+                                    draggable={false}
+                                  />
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="w-full h-14 rounded-md flex items-center justify-center"
+                                style={{ background: "rgba(240,240,240,0.85)", border: "1px solid rgba(255,255,255,0.55)" }}>
+                                <svg width="28" height="22" viewBox="0 0 28 22" fill="none" stroke="#003242" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M2 6.2C2 4.4 3.4 3 5.2 3h6.6l1.7 2h9.3c1.8 0 3.2 1.4 3.2 3.2v8.6c0 1.8-1.4 3.2-3.2 3.2H5.2C3.4 20 2 18.6 2 16.8V6.2Z" />
+                                </svg>
+                              </div>
+                            );
+                          })()}
+                          <p className="mt-1.5 text-[11px] font-sans truncate" style={{ color: "#1e1e1e" }}>
+                            {album.name}
+                          </p>
+                        </button>
+                        <div className="mt-1.5 flex items-center justify-between" data-album-menu-root>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleFavorite(album.id)}
+                            className="w-6 h-6 rounded-full flex items-center justify-center"
+                            style={{ background: "rgba(240,240,240,0.85)" }}
+                          >
+                            {album.isFavorite ? (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ color: "#EF4444" }}>
+                                <path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z" />
+                              </svg>
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" style={{ color: "#A8A29E" }}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+                              </svg>
+                            )}
+                          </button>
+                          <div className="relative" data-album-menu-root>
+                            <button
+                              type="button"
+                              onClick={() => setMenuAlbumId((prev) => (prev === album.id ? null : album.id))}
+                              className="w-6 h-6 rounded-full flex items-center justify-center"
+                              style={{ background: "rgba(240,240,240,0.85)", color: "#334a52" }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <circle cx="5" cy="12" r="1.6" />
+                                <circle cx="12" cy="12" r="1.6" />
+                                <circle cx="19" cy="12" r="1.6" />
+                              </svg>
+                            </button>
+                            <AnimatePresence>
+                              {menuAlbumId === album.id && (
+                                <motion.div
+                                  className="absolute right-0 mt-1 w-28 rounded-lg overflow-hidden z-[90]"
+                                  style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 8px 32px rgba(51,74,82,0.12)" }}
+                                  initial={{ opacity: 0, y: 4, scale: 0.98 }}
+                                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                                  exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                                >
+                                  <button type="button" onClick={() => handleRenameAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: "#1e1e1e" }}>Rename</button>
+                                  <button type="button" onClick={() => handleDeleteAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: album.id === "album-1" ? "#003242" : "#1e1e1e" }} disabled={album.id === "album-1"}>Delete</button>
+                                  <button type="button" onClick={() => handleShareAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: "#1e1e1e" }}>Share</button>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </motion.aside>
+            </div>{/* end sidebar rotation wrapper */}
           </>
         )}
       </AnimatePresence>
 
       {/* â”€â”€ Book Stage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="flex-1 flex items-center justify-center w-full px-4">
+      <div className="flex-1 flex items-center justify-center w-full px-4" style={isMobile ? { paddingRight: 64, paddingLeft: 40, paddingTop: 20, paddingBottom: 20 } : {}}>
         <div className="flex items-center justify-center gap-5">
 
           {/* LEFT ARROW â€” desktop only; on mobile the button overlays the book */}
@@ -1093,7 +1181,7 @@ export default function AlbumBook() {
                   <div style={{
                     position: "absolute",
                     top: -4, left: -10, right: -10, bottom: -4,
-                    backgroundColor: "#F9F9F9",
+                    backgroundColor: "#ffffff",
                     borderRadius: 12,
                     boxShadow: "inset -3px 0 6px rgba(0,0,0,0.05), inset 3px 0 6px rgba(0,0,0,0.05)",
                     zIndex: 0,
@@ -1201,14 +1289,25 @@ export default function AlbumBook() {
       </div>
 
       {/* â”€â”€ Pagination dots â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <motion.div className="flex flex-col items-center gap-2.5 pb-7 pt-3"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-        <div className="flex items-center gap-1.5">
+      {isMobile ? (
+        /* Mobile: fixed vertical dots on left side (= left of landscape view) */
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
+          style={{
+            position: "fixed",
+            left: 6,
+            top: "50%",
+            transform: "translateY(-50%) rotate(180deg)",
+            zIndex: 30,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+          }}>
           {Array.from({ length: totalSpreads }).map((_, i) => (
             <motion.button key={i}
               className="rounded-full border-none p-0 cursor-pointer"
-              // MOBILE FIX: touch-action:manipulation removes iOS 300 ms tap delay
-              style={{ height: 6, borderRadius: 999, touchAction: "manipulation" }}
+              style={{ width: 6, borderRadius: 999, touchAction: "manipulation" }}
               onClick={() => {
                 const target = i * 2;
                 const diff = target - currentPage;
@@ -1218,19 +1317,47 @@ export default function AlbumBook() {
                 for (let j = 0; j < steps; j++) setTimeout(fn, j * 740);
               }}
               animate={{
-                width: i === spreadIndex ? 20 : 6,
+                height: i === spreadIndex ? 20 : 6,
                 background: i === spreadIndex
-                  ? (isBgDark ? "#F8F9FA" : "#8B6343")
-                  : (isBgDark ? "rgba(255,255,255,0.35)" : "#C4A882")
+                  ? (isBgDark ? "#fcfcd4" : "#003242")
+                  : (isBgDark ? "rgba(255,255,255,0.35)" : "#96afb9")
               }}
               transition={{ type: "spring", stiffness: 420, damping: 32 }}
             />
           ))}
-        </div>
-        <p className="text-xs font-sans tracking-wide transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#5C4A32" }}>
-          Spread {spreadIndex + 1} / {totalSpreads}
-        </p>
-      </motion.div>
+        </motion.div>
+      ) : (
+        <motion.div className="flex flex-col items-center gap-2.5 pb-7 pt-3"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
+          <div className="flex items-center gap-1.5">
+            {Array.from({ length: totalSpreads }).map((_, i) => (
+              <motion.button key={i}
+                className="rounded-full border-none p-0 cursor-pointer"
+                // MOBILE FIX: touch-action:manipulation removes iOS 300 ms tap delay
+                style={{ height: 6, borderRadius: 999, touchAction: "manipulation" }}
+                onClick={() => {
+                  const target = i * 2;
+                  const diff = target - currentPage;
+                  if (diff === 0) return;
+                  const steps = Math.abs(diff / 2);
+                  const fn = diff > 0 ? goNext : goPrev;
+                  for (let j = 0; j < steps; j++) setTimeout(fn, j * 740);
+                }}
+                animate={{
+                  width: i === spreadIndex ? 20 : 6,
+                  background: i === spreadIndex
+                    ? (isBgDark ? "#fcfcd4" : "#003242")
+                    : (isBgDark ? "rgba(255,255,255,0.35)" : "#96afb9")
+                }}
+                transition={{ type: "spring", stiffness: 420, damping: 32 }}
+              />
+            ))}
+          </div>
+          <p className="text-xs font-sans tracking-wide transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52" }}>
+            Spread {spreadIndex + 1} / {totalSpreads}
+          </p>
+        </motion.div>
+      )}
 
       {/* â”€â”€ Onboarding tip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <AnimatePresence>
@@ -1260,82 +1387,104 @@ export default function AlbumBook() {
               exit={{ opacity: 0 }}
               onClick={closeAlbumDialog}
             />
-            <motion.div
-              className="fixed inset-0 z-[130] flex items-center justify-center px-4 sm:px-6"
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              transition={{ type: "spring", stiffness: 280, damping: 26 }}
-            >
-              <div
-                className="w-[331px] max-w-[calc(100vw-2rem)] rounded-2xl px-4 py-5 sm:w-[420px] sm:max-w-[calc(100vw-3rem)] sm:rounded-[24px] sm:px-6 sm:py-6 md:w-[460px] md:max-w-[460px] md:px-7 md:py-7 lg:w-[480px] lg:max-w-[480px]"
-                style={{ background: "#EDE0D0", border: "1px solid rgba(255,255,255,0.55)", boxShadow: "0 8px 32px rgba(90,60,20,0.12)" }}
-              >
-                {albumDialog.type === "delete" ? (
-                  <>
-                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[21px] md:text-[25px]" style={{ color: "#1A1209", fontWeight: 500 }}>
-                      Are you sure, you want to delete
-                      <br />
-                      {dialogAlbumName}?
-                    </p>
-                    <div className="mt-6 grid grid-cols-2 place-items-center gap-2 sm:mt-6 sm:grid-cols-2 sm:gap-3">
-                      <button
-                        type="button"
-                        onClick={confirmDeleteAlbum}
-                        className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
-                        style={{ border: "3px solid #1e1e1e", color: "#1A1209", background: "transparent", fontWeight: 400 }}
-                      >
-                        Yes, delete
-                      </button>
-                      <button
-                        type="button"
-                        onClick={closeAlbumDialog}
-                        className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
-                        style={{ color: "#F5EFE6", background: "#1e1e1e", fontWeight: 500 }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[21px] md:text-[25px]" style={{ color: "#1A1209", fontWeight: 500 }}>
-                      Rename Album
-                    </p>
-                    <input
-                      ref={renameInputRef}
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") confirmRenameAlbum();
-                        if (e.key === "Escape") closeAlbumDialog();
-                      }}
-                      className="mt-5 w-full h-12 rounded-xl px-3.5 text-base font-sans outline-none sm:mt-5 sm:h-12 sm:rounded-xl sm:px-4 sm:text-[17px] md:h-[50px]"
-                      style={{ border: "2px solid #8B6343", color: "#1A1209", background: "rgba(245,239,230,0.95)" }}
-                      placeholder="Album name"
-                    />
-                    <div className="mt-5 grid grid-cols-2 place-items-center gap-2 sm:mt-5 sm:grid-cols-2 sm:gap-3">
-                      <button
-                        type="button"
-                        onClick={confirmRenameAlbum}
-                        className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
-                        style={{ color: "#F5EFE6", background: "#1e1e1e", fontWeight: 500 }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={closeAlbumDialog}
-                        className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
-                        style={{ border: "3px solid #1e1e1e", color: "#1A1209", background: "transparent", fontWeight: 400 }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                )}
+            {/* Fixed overlay — plain div so rotation doesn't fight Framer Motion */}
+            <div className="fixed inset-0 z-[130] pointer-events-none" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {/* Rotation wrapper: -90° on mobile so modal matches book orientation */}
+              <div style={isMobile ? {
+                position: "absolute",
+                width: "100vh", height: "100vw",
+                left: "50%", top: "50%",
+                transform: "translate(-50%, -50%) rotate(-90deg)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: "0 16px",
+              } : {
+                width: "100%", height: "100%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: "0 16px",
+              }}>
+                {/* Animated card — scale/opacity only, no position transform */}
+                <motion.div
+                  style={{ pointerEvents: "auto" }}
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ type: "spring", stiffness: 280, damping: 26 }}
+                >
+                  <div
+                    style={{
+                      width: isMobile ? Math.min(400, window.innerHeight - 32) : 331,
+                      background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)",
+                      boxShadow: "0 8px 32px rgba(51,74,82,0.12)",
+                      borderRadius: 16, padding: "20px 16px",
+                    }}
+                  >
+                    {albumDialog.type === "delete" ? (
+                      <>
+                        <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[21px] md:text-[25px]" style={{ color: "#1e1e1e", fontWeight: 500 }}>
+                          Are you sure, you want to delete
+                          <br />
+                          {dialogAlbumName}?
+                        </p>
+                        <div className="mt-6 grid grid-cols-2 place-items-center gap-2 sm:mt-6 sm:grid-cols-2 sm:gap-3">
+                          <button
+                            type="button"
+                            onClick={confirmDeleteAlbum}
+                            className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
+                            style={{ border: "3px solid #1e1e1e", color: "#1e1e1e", background: "transparent", fontWeight: 400 }}
+                          >
+                            Yes, delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={closeAlbumDialog}
+                            className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
+                            style={{ color: "#ffffff", background: "#1e1e1e", fontWeight: 500 }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[21px] md:text-[25px]" style={{ color: "#1e1e1e", fontWeight: 500 }}>
+                          Rename Album
+                        </p>
+                        <input
+                          ref={renameInputRef}
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") confirmRenameAlbum();
+                            if (e.key === "Escape") closeAlbumDialog();
+                          }}
+                          className="mt-5 w-full h-12 rounded-xl px-3.5 text-base font-sans outline-none sm:mt-5 sm:h-12 sm:rounded-xl sm:px-4 sm:text-[17px] md:h-[50px]"
+                          style={{ border: "2px solid #003242", color: "#1e1e1e", background: "rgba(224,244,255,0.95)" }}
+                          placeholder="Album name"
+                        />
+                        <div className="mt-5 grid grid-cols-2 place-items-center gap-2 sm:mt-5 sm:grid-cols-2 sm:gap-3">
+                          <button
+                            type="button"
+                            onClick={confirmRenameAlbum}
+                            className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
+                            style={{ color: "#ffffff", background: "#1e1e1e", fontWeight: 500 }}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={closeAlbumDialog}
+                            className="h-[46px] w-[132px] rounded-full text-[16px] font-sans sm:h-[46px] sm:w-full sm:text-[16px] md:h-12 md:text-[17px]"
+                            style={{ border: "3px solid #1e1e1e", color: "#1e1e1e", background: "transparent", fontWeight: 400 }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </motion.div>
               </div>
-            </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>
@@ -1352,144 +1501,165 @@ export default function AlbumBook() {
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setShowTemplateModal(false)}
             />
-            <motion.div
-              className="fixed inset-0 z-[130] flex items-center justify-center px-4 sm:px-6"
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              transition={{ type: "spring", stiffness: 280, damping: 26 }}
-            >
-              <div
-                className="w-[331px] max-w-[calc(100vw-2rem)] h-[480px] rounded-2xl px-4 py-5 sm:w-[420px] sm:px-6 sm:py-6 flex flex-col"
-                style={{ background: "#EDE0D0", border: "1px solid rgba(255,255,255,0.55)", boxShadow: "0 8px 32px rgba(90,60,20,0.12)" }}
-              >
-                {templateModalStep === "pick" ? (
-                  <>
-                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1A1209", fontWeight: 500 }}>
-                      Choose a Template
-                    </p>
-                    <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-2">
-                      <div className="p-2">
-                        <div className="grid grid-cols-2 gap-3">
-                          {([1, 2, 3, 4, 5] as (1 | 2 | 3 | 4 | 5)[]).map((tid) => (
-                            <motion.button
-                              key={tid}
-                              type="button"
-                              onClick={() => handleConfirmTemplate(tid)}
-                              className="flex flex-col items-center gap-2 rounded-xl p-3"
-                              style={{ background: "rgba(245,239,230,0.45)", backdropFilter: "blur(16px) saturate(180%)", border: "1px solid rgba(255,255,255,0.55)", boxShadow: "0 8px 32px rgba(90,60,20,0.12)" }}
-                              whileHover={{ scale: 1.03, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
-                              whileTap={{ scale: 0.97 }}
-                            >
-                              <TemplatePreview templateId={tid} />
-                              <span className="text-[11px] font-sans font-medium" style={{ color: "#1A1209" }}>
-                                Style {tid}
-                              </span>
-                            </motion.button>
-                          ))}
-                          <motion.button
-                            type="button"
-                            className="col-span-2 flex items-center justify-center gap-2 rounded-xl p-3"
-                            style={{ background: "rgba(255,255,255,0.90)", border: "1.5px solid rgba(0,0,0,0.09)" }}
-                            whileHover={{ scale: 1.02, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
-                            whileTap={{ scale: 0.97 }}
-                            onClick={() => setTemplateModalStep("custom")}
-                          >
-                            <span className="text-[13px] font-sans font-medium" style={{ color: "#1A1209" }}>Custom Mix</span>
-                            <span className="text-[11px] font-sans" style={{ color: "#5C4A32" }}>— choose 2–4 styles</span>
-                          </motion.button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <button
-                        type="button"
-                        onClick={() => setShowTemplateModal(false)}
-                        className="w-full h-11 rounded-full text-[15px] font-sans"
-                        style={{ background: "#1e1e1e", color: "#F5EFE6", fontWeight: 500 }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-
-                  </>
-                ) : (
-                  <>
-                    <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1A1209", fontWeight: 500 }}>
-                      Custom Mix
-                    </p>
-                    <p className="text-center text-[12px] font-sans mt-1" style={{ color: "#5C4A32" }}>
-                      Select 2–4 styles to mix across pages
-                    </p>
-                    <div className="mt-4 flex-1 overflow-y-auto overflow-x-hidden pr-2">
-                      <div className="p-2">
-                        <div className="grid grid-cols-2 gap-3">
-                          {([1, 2, 3, 4] as (1 | 2 | 3 | 4)[]).map((tid) => {
-                            const selected = pendingCustomStyles.includes(tid);
-                            return (
+            <div className="fixed inset-0 z-[130] pointer-events-none" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={isMobile ? {
+                position: "absolute",
+                width: "100vh", height: "100vw",
+                left: "50%", top: "50%",
+                transform: "translate(-50%, -50%) rotate(-90deg)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: "0 16px",
+              } : {
+                width: "100%", height: "100%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: "0 16px",
+              }}>
+                <motion.div
+                  style={{ pointerEvents: "auto" }}
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ type: "spring", stiffness: 280, damping: 26 }}
+                >
+                  <div
+                    style={{
+                      width: isMobile ? Math.min(400, window.innerHeight - 32) : 331,
+                      height: 480, flexShrink: 0,
+                      background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)",
+                      boxShadow: "0 8px 32px rgba(51,74,82,0.12)",
+                      borderRadius: 16, padding: "20px 16px",
+                      display: "flex", flexDirection: "column",
+                    }}
+                  >
+                    {templateModalStep === "pick" ? (
+                      <>
+                        <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1e1e1e", fontWeight: 500 }}>
+                          Choose a Template
+                        </p>
+                        <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-2">
+                          <div className="p-2">
+                            <div className="grid grid-cols-2 gap-3">
+                              {([1, 2, 3, 4, 5] as (1 | 2 | 3 | 4 | 5)[]).map((tid) => (
+                                <motion.button
+                                  key={tid}
+                                  type="button"
+                                  onClick={() => handleConfirmTemplate(tid)}
+                                  className="flex flex-col items-center gap-2 rounded-xl p-3"
+                                  style={{ background: "rgba(224,244,255,0.45)", backdropFilter: "blur(16px) saturate(180%)", border: "1px solid rgba(255,255,255,0.55)", boxShadow: "0 8px 32px rgba(51,74,82,0.12)" }}
+                                  whileHover={{ scale: 1.03, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
+                                  whileTap={{ scale: 0.97 }}
+                                >
+                                  <TemplatePreview templateId={tid} />
+                                  <span className="text-[11px] font-sans font-medium" style={{ color: "#1e1e1e" }}>
+                                    Style {tid}
+                                  </span>
+                                </motion.button>
+                              ))}
                               <motion.button
-                                key={tid}
                                 type="button"
-                                className="flex flex-col items-center gap-2 rounded-xl p-3 relative"
-                                style={{
-                                  background: selected ? "rgba(139,99,67,0.15)" : "rgba(245,239,230,0.45)",
-                                  backdropFilter: "blur(16px) saturate(180%)",
-                                  border: selected ? "1.5px solid #8B6343" : "1px solid rgba(255,255,255,0.55)",
-                                  boxShadow: "0 8px 32px rgba(90,60,20,0.12)",
-                                }}
+                                className="col-span-2 flex items-center justify-center gap-2 rounded-xl p-3"
+                                style={{ background: "rgba(255,255,255,0.90)", border: "1.5px solid rgba(0,0,0,0.09)" }}
+                                whileHover={{ scale: 1.02, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
                                 whileTap={{ scale: 0.97 }}
-                                onClick={() => {
-                                  setPendingCustomStyles((prev) =>
-                                    prev.includes(tid)
-                                      ? prev.filter((s) => s !== tid)
-                                      : prev.length < 4 ? [...prev, tid] : prev
-                                  );
-                                }}
+                                onClick={() => setTemplateModalStep("custom")}
                               >
-                                <TemplatePreview templateId={tid} />
-                                <span className="text-[11px] font-sans font-medium" style={{ color: "#1A1209" }}>
-                                  Style {tid}
-                                </span>
-                                {selected && (
-                                  <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "#1e1e1e" }}>
-                                    <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
-                                      <path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                  </div>
-                                )}
+                                <span className="text-[13px] font-sans font-medium" style={{ color: "#1e1e1e" }}>Custom Mix</span>
+                                <span className="text-[11px] font-sans" style={{ color: "#334a52" }}>— choose 2–4 styles</span>
                               </motion.button>
-                            );
-                          })}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setTemplateModalStep("pick")}
-                        className="h-11 rounded-full text-[15px] font-sans"
-                        style={{ border: "2px solid #8B6343", color: "#5C4A32", background: "transparent" }}
-                      >
-                        Back
-                      </button>
-                      <button
-                        type="button"
-                        disabled={pendingCustomStyles.length < 2}
-                        onClick={() => handleConfirmCustomStyle(pendingCustomStyles)}
-                        className="h-11 rounded-full text-[15px] font-sans"
-                        style={{
-                          background: pendingCustomStyles.length < 2 ? "rgba(30,30,30,0.35)" : "#1e1e1e",
-                          color: "#F5EFE6",
-                          fontWeight: 500,
-                        }}
-                      >
-                        Create Album
-                      </button>
-                    </div>
-                  </>
-                )}
+                        <div className="mt-4">
+                          <button
+                            type="button"
+                            onClick={() => setShowTemplateModal(false)}
+                            className="w-full h-11 rounded-full text-[15px] font-sans"
+                            style={{ background: "#1e1e1e", color: "#ffffff", fontWeight: 500 }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1e1e1e", fontWeight: 500 }}>
+                          Custom Mix
+                        </p>
+                        <p className="text-center text-[12px] font-sans mt-1" style={{ color: "#334a52" }}>
+                          Select 2–4 styles to mix across pages
+                        </p>
+                        <div className="mt-4 flex-1 overflow-y-auto overflow-x-hidden pr-2">
+                          <div className="p-2">
+                            <div className="grid grid-cols-2 gap-3">
+                              {([1, 2, 3, 4] as (1 | 2 | 3 | 4)[]).map((tid) => {
+                                const selected = pendingCustomStyles.includes(tid);
+                                return (
+                                  <motion.button
+                                    key={tid}
+                                    type="button"
+                                    className="flex flex-col items-center gap-2 rounded-xl p-3 relative"
+                                    style={{
+                                      background: selected ? "rgba(0,50,66,0.15)" : "rgba(224,244,255,0.45)",
+                                      backdropFilter: "blur(16px) saturate(180%)",
+                                      border: selected ? "1.5px solid #003242" : "1px solid rgba(255,255,255,0.55)",
+                                      boxShadow: "0 8px 32px rgba(51,74,82,0.12)",
+                                    }}
+                                    whileTap={{ scale: 0.97 }}
+                                    onClick={() => {
+                                      setPendingCustomStyles((prev) =>
+                                        prev.includes(tid)
+                                          ? prev.filter((s) => s !== tid)
+                                          : prev.length < 4 ? [...prev, tid] : prev
+                                      );
+                                    }}
+                                  >
+                                    <TemplatePreview templateId={tid} />
+                                    <span className="text-[11px] font-sans font-medium" style={{ color: "#1e1e1e" }}>
+                                      Style {tid}
+                                    </span>
+                                    {selected && (
+                                      <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "#1e1e1e" }}>
+                                        <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                                          <path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                        </svg>
+                                      </div>
+                                    )}
+                                  </motion.button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setTemplateModalStep("pick")}
+                            className="h-11 rounded-full text-[15px] font-sans"
+                            style={{ border: "2px solid #003242", color: "#334a52", background: "transparent" }}
+                          >
+                            Back
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pendingCustomStyles.length < 2}
+                            onClick={() => handleConfirmCustomStyle(pendingCustomStyles)}
+                            className="h-11 rounded-full text-[15px] font-sans"
+                            style={{
+                              background: pendingCustomStyles.length < 2 ? "rgba(30,30,30,0.35)" : "#1e1e1e",
+                              color: "#ffffff",
+                              fontWeight: 500,
+                            }}
+                          >
+                            Create Album
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </motion.div>
               </div>
-            </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>
@@ -1520,15 +1690,15 @@ function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 | 5 }) {
   const gw = W - px * 2;
   const gh = H - py * 2;
   const gap = 3;
-  const slotFill = "rgb(196,168,130)";
-  const slotBg = "rgb(245,239,230)";
+  const slotFill = "rgb(200,200,200)";
+  const slotBg = "rgb(255,255,255)";
   type R = { x: number; y: number; w: number; h: number };
   const slots: R[] = [];
 
   if (templateId === 5) {
     return (
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        <rect width={W} height={H} rx={5} fill="#EDE0D0" />
+        <rect width={W} height={H} rx={5} fill="rgb(240,240,240)" />
       </svg>
     );
   }
@@ -1592,9 +1762,9 @@ function NavButton({ direction, onClick, disabled, rotated }: {
       className="flex items-center justify-center rounded-full"
       style={{
         width: 44, height: 44,
-        background: "rgba(237,224,208,0.85)",
-        boxShadow: "0 2px 14px rgba(90,60,20,0.12)",
-        border: "1px solid rgba(255,255,255,0.55)",
+        background: "rgba(224,244,255,0.75)",
+        boxShadow: "0 2px 14px rgba(51,74,82,0.12)",
+        border: "1px solid rgba(180,235,255,0.55)",
         cursor: disabled ? "default" : "pointer",
         flexShrink: 0,
       }}
@@ -1604,8 +1774,8 @@ function NavButton({ direction, onClick, disabled, rotated }: {
       transition={{ duration: 0.15 }}
     >
       {direction === "prev"
-        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5C4A32" strokeWidth="2.3" strokeLinecap="round" style={rotated ? { transform: "rotate(-90deg)" } : undefined}><polyline points="15 18 9 12 15 6" /></svg>
-        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5C4A32" strokeWidth="2.3" strokeLinecap="round" style={rotated ? { transform: "rotate(-90deg)" } : undefined}><polyline points="9 18 15 12 9 6" /></svg>
+        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#334a52" strokeWidth="2.3" strokeLinecap="round" style={rotated ? { transform: "rotate(-90deg)" } : undefined}><polyline points="15 18 9 12 15 6" /></svg>
+        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#334a52" strokeWidth="2.3" strokeLinecap="round" style={rotated ? { transform: "rotate(-90deg)" } : undefined}><polyline points="9 18 15 12 9 6" /></svg>
       }
     </motion.button>
   );

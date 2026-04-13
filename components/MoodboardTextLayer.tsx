@@ -73,8 +73,10 @@ export default function MoodboardTextLayer({
     };
   }, [selectedId]);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   return (
-    <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
+    <div ref={containerRef} style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
       {pageTexts.map((text) => (
         <MoodboardTextItem
           key={text.id}
@@ -82,6 +84,7 @@ export default function MoodboardTextLayer({
           allTexts={texts}
           containerWidth={containerWidth}
           containerHeight={containerHeight}
+          containerRef={containerRef}
           isSelected={selectedId === text.id}
           onSelect={() => handleSelect(text.id)}
           onColorClick={() => setColorPickerTargetId(text.id)}
@@ -225,7 +228,7 @@ function SmoothColorPicker({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onClose(); }}
-        style={{ width: "100%", border: "none", background: "#1A1209", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "10px 0", marginTop: 4 }}
+        style={{ width: "100%", border: "none", background: "#1e1e1e", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "10px 0", marginTop: 4 }}
       >
         Done
       </button>
@@ -238,6 +241,7 @@ interface ItemProps {
   allTexts: MoodboardText[];
   containerWidth: number;
   containerHeight: number;
+  containerRef: React.RefObject<HTMLDivElement>;
   isSelected: boolean;
   onSelect: () => void;
   onColorClick: () => void;
@@ -250,6 +254,7 @@ function MoodboardTextItem({
   allTexts,
   containerWidth,
   containerHeight,
+  containerRef,
   isSelected,
   onSelect,
   onColorClick,
@@ -257,8 +262,12 @@ function MoodboardTextItem({
   toolbarActiveRef,
 }: ItemProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const textDisplayRef = useRef<HTMLDivElement>(null);
   const x = useMotionValue(text.x);
   const y = useMotionValue(text.y);
+  const rotateMV = useMotionValue(text.rotation ?? 0);
+  // Tracks live width/fontSize/rotation during gesture — avoids setDraft on every move event
+  const liveResizeRef = useRef({ width: text.width, fontSize: text.fontSize, rotation: text.rotation ?? 0 });
   const [draft, setDraft] = useState(text);
   const [editing, setEditing] = useState(false);
   const [rotating, setRotating] = useState(false);
@@ -277,8 +286,10 @@ function MoodboardTextItem({
   useEffect(() => {
     x.set(text.x);
     y.set(text.y);
+    rotateMV.set(text.rotation ?? 0);
+    liveResizeRef.current = { width: text.width, fontSize: text.fontSize, rotation: text.rotation ?? 0 };
     setDraft(text);
-  }, [text, x, y]);
+  }, [text, x, y]); // eslint-disable-line
 
   useEffect(() => {
     if (!editing) return;
@@ -289,6 +300,30 @@ function MoodboardTextItem({
   const commit = useCallback((next: MoodboardText) => {
     onTextsChange(allTexts.map((t) => (t.id === next.id ? next : t)));
   }, [allTexts, onTextsChange]);
+
+  // Convert screen coordinates to page-local coordinates, accounting for
+  // the book's scale and optional -90° mobile rotation.
+  const screenToPage = useCallback((sx: number, sy: number): { x: number; y: number } => {
+    const el = containerRef.current;
+    if (!el) return { x: sx, y: sy };
+    const rect = el.getBoundingClientRect();
+    const scaleFlat = rect.width  / containerWidth;
+    const scaleRot  = rect.width  / containerHeight;
+    const isRotated =
+      Math.abs(rect.height - containerWidth  * scaleRot ) <
+      Math.abs(rect.height - containerHeight * scaleFlat);
+    if (!isRotated) {
+      const scale = rect.width / containerWidth;
+      return { x: (sx - rect.left) / scale, y: (sy - rect.top) / scale };
+    }
+    const scale  = rect.width / containerHeight;
+    const rectCx = rect.left + rect.width  / 2;
+    const rectCy = rect.top  + rect.height / 2;
+    return {
+      x: containerWidth  / 2 - (sy - rectCy) / scale,
+      y: containerHeight / 2 + (sx - rectCx) / scale,
+    };
+  }, [containerRef, containerWidth, containerHeight]);
 
   const onDragEnd = useCallback(() => {
     const maxX = Math.max(0, containerWidth - draft.width - 8);
@@ -330,14 +365,22 @@ function MoodboardTextItem({
     const dist = Math.hypot(dx, dy) * (dx + dy >= 0 ? 1 : -1);
     const nextWidth = Math.max(90, Math.min(420, rs.startWidth + dist));
     const nextSize = Math.max(10, Math.min(120, rs.startSize + dist / 12));
-    setDraft((prev) => ({ ...prev, width: nextWidth, fontSize: nextSize }));
+    // Update DOM directly — bypass React re-render for smooth mobile performance
+    liveResizeRef.current = { ...liveResizeRef.current, width: nextWidth, fontSize: nextSize };
+    if (textDisplayRef.current) {
+      textDisplayRef.current.style.width = nextWidth + "px";
+      textDisplayRef.current.style.fontSize = nextSize + "px";
+    }
   }, []);
 
   const endResize = useCallback(() => {
     if (!resizeRef.current) return;
     resizeRef.current = null;
     setResizing(false);
-    commit(draft);
+    const live = liveResizeRef.current;
+    const next = { ...draft, width: live.width, fontSize: live.fontSize };
+    setDraft(next);
+    commit(next);
   }, [commit, draft]);
 
   useEffect(() => {
@@ -372,12 +415,16 @@ function MoodboardTextItem({
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const ratio = Math.max(0.35, Math.min(3.2, Math.hypot(dx, dy) / ts.dist0));
       const dAngle = (Math.atan2(dy, dx) - ts.angle0) * (180 / Math.PI);
-      setDraft((prev) => ({
-        ...prev,
-        width: Math.max(90, Math.min(420, ts.width0 * ratio)),
-        fontSize: Math.max(10, Math.min(120, ts.size0 * ratio)),
-        rotation: ts.rot0 + dAngle,
-      }));
+      const newWidth = Math.max(90, Math.min(420, ts.width0 * ratio));
+      const newSize = Math.max(10, Math.min(120, ts.size0 * ratio));
+      const newRot = ts.rot0 + dAngle;
+      // Update DOM directly — bypass React re-render for smooth mobile performance
+      liveResizeRef.current = { width: newWidth, fontSize: newSize, rotation: newRot };
+      if (textDisplayRef.current) {
+        textDisplayRef.current.style.width = newWidth + "px";
+        textDisplayRef.current.style.fontSize = newSize + "px";
+      }
+      rotateMV.set(newRot);
     };
 
     const onTouchEnd = () => {
@@ -385,7 +432,10 @@ function MoodboardTextItem({
       touchRef.current = null;
       setResizing(false);
       setRotating(false);
-      commit(draft);
+      const live = liveResizeRef.current;
+      const next = { ...draft, width: live.width, fontSize: live.fontSize, rotation: live.rotation };
+      setDraft(next);
+      commit(next);
     };
 
     el.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -410,16 +460,18 @@ function MoodboardTextItem({
         left: 0,
         x,
         y,
-        rotate: draft.rotation ?? 0,
+        rotate: rotateMV,
         transformOrigin: "center center",
         zIndex: isSelected ? (text.zIndex + 100) : text.zIndex,
         pointerEvents: "auto",
         touchAction: "none",
         userSelect: "none",
+        willChange: "transform",
       }}
       drag={!editing && !rotating && !resizing}
       dragMomentum={false}
       dragElastic={0}
+      transformPagePoint={(p) => screenToPage(p.x, p.y)}
       onPointerDown={(e) => {
         e.stopPropagation();
         (e.nativeEvent as Event).stopImmediatePropagation();
@@ -513,6 +565,7 @@ function MoodboardTextItem({
         />
       ) : (
         <div
+          ref={textDisplayRef}
           style={{
             width: draft.width,
             minWidth: 90,

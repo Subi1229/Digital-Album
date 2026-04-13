@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import Cropper from "react-easy-crop";
 import { motion, AnimatePresence } from "framer-motion";
 import { CropArea, PendingCrop } from "@/lib/types";
@@ -13,6 +13,14 @@ interface CropModalProps {
 }
 
 export default function CropModal({ pending, onDone, onCancel }: CropModalProps) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768 && navigator.maxTouchPoints > 0);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   // Minimum zoom = image must always fill the crop box so no black background bleeds in
@@ -57,7 +65,7 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
       `}</style>
       {pending && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-50"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -71,7 +79,19 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
             animate={{ opacity: 1 }}
           />
 
-          {/* Modal */}
+          {/* Rotation wrapper: plain div so rotation doesn't conflict with Framer Motion */}
+          <div style={isMobile ? {
+            position: "absolute",
+            width: "100vh", height: "100vw",
+            left: "50%", top: "50%",
+            transform: "translate(-50%, -50%) rotate(-90deg)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          } : {
+            position: "absolute", inset: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+
+          {/* Modal card — scale/opacity animation only, no y offset */}
           <motion.div
             className="relative z-10 flex flex-col rounded-3xl overflow-hidden shadow-2xl"
             style={{
@@ -79,9 +99,9 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
               background: "rgba(15,15,15,0.95)",
               border: "1px solid rgba(255,255,255,0.08)",
             }}
-            initial={{ scale: 0.85, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.85, opacity: 0, y: 20 }}
+            initial={{ scale: 0.85, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.85, opacity: 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 28 }}
           >
             {/* Header */}
@@ -198,6 +218,7 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
               </button>
             </div>
           </motion.div>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

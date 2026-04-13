@@ -27,6 +27,7 @@ interface StickerLayerProps {
 export default function StickerLayer(props: StickerLayerProps) {
   const { stickers, pageIndex, containerWidth, containerHeight, onStickersChange } = props;
   const pageStickers = stickers.filter((s) => s.pageIndex === pageIndex);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // ── Selection state — only one sticker selected at a time ────────────────
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export default function StickerLayer(props: StickerLayerProps) {
 
   return (
     <div
+      ref={containerRef}
       style={{
         position: "absolute",
         inset: 0,
@@ -77,6 +79,7 @@ export default function StickerLayer(props: StickerLayerProps) {
             sticker={sticker}
             containerWidth={containerWidth}
             containerHeight={containerHeight}
+            containerRef={containerRef}
             allStickers={stickers}
             onStickersChange={onStickersChange}
             isSelected={selectedId === sticker.id}
@@ -266,6 +269,7 @@ interface DraggableStickerProps {
   sticker: Sticker;
   containerWidth: number;
   containerHeight: number;
+  containerRef: React.RefObject<HTMLDivElement>;
   allStickers: Sticker[];
   onStickersChange: (s: Sticker[]) => void;
   isSelected: boolean;
@@ -280,6 +284,7 @@ function DraggableSticker({
   sticker,
   containerWidth,
   containerHeight,
+  containerRef,
   allStickers,
   onStickersChange,
   isSelected,
@@ -425,6 +430,31 @@ function DraggableSticker({
   useEffect(() => {
     rotateMotion.set(sticker.rotation ?? 0);
   }, [sticker.rotation]); // eslint-disable-line
+
+  // Convert screen/page coordinates to page-local coordinates, accounting for
+  // the book's scale and optional -90° mobile rotation. Used by transformPagePoint
+  // so Framer Motion computes drag deltas in the correct coordinate space.
+  const screenToPage = useCallback((sx: number, sy: number): { x: number; y: number } => {
+    const el = containerRef.current;
+    if (!el) return { x: sx, y: sy };
+    const rect = el.getBoundingClientRect();
+    const scaleFlat = rect.width  / containerWidth;
+    const scaleRot  = rect.width  / containerHeight;
+    const isRotated =
+      Math.abs(rect.height - containerWidth  * scaleRot ) <
+      Math.abs(rect.height - containerHeight * scaleFlat);
+    if (!isRotated) {
+      const scale = rect.width / containerWidth;
+      return { x: (sx - rect.left) / scale, y: (sy - rect.top) / scale };
+    }
+    const scale  = rect.width / containerHeight;
+    const rectCx = rect.left + rect.width  / 2;
+    const rectCy = rect.top  + rect.height / 2;
+    return {
+      x: containerWidth  / 2 - (sy - rectCy) / scale,
+      y: containerHeight / 2 + (sx - rectCx) / scale,
+    };
+  }, [containerRef, containerWidth, containerHeight]);
 
   const handleDragEnd = useCallback(async () => {
     const rawX = x.get();
@@ -654,6 +684,7 @@ function DraggableSticker({
         pointerEvents: isBlocked ? "none" : (contentBounds && Math.max(sticker.width, sticker.height) * (sticker.scale ?? 1) > 100 ? "none" : "auto"),
         touchAction: "none",
         userSelect: "none",
+        willChange: "transform",
         zIndex: 5 + zOrder,
         boxSizing: "border-box",
         border: (() => {
@@ -666,6 +697,7 @@ function DraggableSticker({
       drag={!isGesturing && !isRotating && !isResizing}
       dragMomentum={false}
       dragElastic={0}
+      transformPagePoint={(p) => screenToPage(p.x, p.y)}
       onPointerDown={handlePointerDown}
       onMouseDown={stopNative}    // stops react-pageflip's mousedown listener (desktop)
       onPointerUp={handlePointerUp}

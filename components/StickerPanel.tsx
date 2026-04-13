@@ -139,6 +139,13 @@ export default function StickerPanel({
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
   const [activeTab, setActiveTab] = useState<"stickers" | "washi">("stickers");
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768 && navigator.maxTouchPoints > 0);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     if (!isOpen || !showWashiTab) setActiveTab("stickers");
@@ -326,9 +333,32 @@ export default function StickerPanel({
           />
 
           {/* Panel */}
+          {/* On mobile, wrap in rotation container matching -90° book rotation */}
+          <div style={isMobile ? {
+            position: "fixed",
+            zIndex: 50,
+            width: "100vh",
+            height: "100vw",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%) rotate(-90deg)",
+            pointerEvents: "none",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+          } : { display: "contents" }}>
           <motion.div
-            className="fixed z-50 flex flex-col rounded-2xl overflow-hidden"
-            style={{
+            className={isMobile ? "flex flex-col rounded-2xl overflow-hidden" : "fixed z-50 flex flex-col rounded-2xl overflow-hidden"}
+            style={isMobile ? {
+              position: "relative",
+              marginBottom: 80,
+              width: 320,
+              maxHeight: "70vh",
+              pointerEvents: "auto",
+              background: "rgba(255,255,255,0.97)",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)",
+              border: "1px solid rgba(0,0,0,0.06)",
+            } : {
               bottom: 80,
               left: "50%",
               width: 320,
@@ -337,9 +367,9 @@ export default function StickerPanel({
               boxShadow: "0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)",
               border: "1px solid rgba(0,0,0,0.06)",
             }}
-            initial={{ opacity: 0, y: 16, x: "-50%", scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
-            exit={{ opacity: 0, y: 10, x: "-50%", scale: 0.95 }}
+            initial={isMobile ? { opacity: 0, scale: 0.95 } : { opacity: 0, y: 16, x: "-50%", scale: 0.95 }}
+            animate={isMobile ? { opacity: 1, scale: 1 } : { opacity: 1, y: 0, x: "-50%", scale: 1 }}
+            exit={isMobile ? { opacity: 0, scale: 0.95 } : { opacity: 0, y: 10, x: "-50%", scale: 0.95 }}
             transition={{ type: "spring", stiffness: 320, damping: 28 }}
           >
             {/* Header */}
@@ -600,6 +630,7 @@ export default function StickerPanel({
               )}
             </div>
           </motion.div>
+          </div>{/* end panel rotation wrapper */}
 
           <input
             ref={fileInputRef}

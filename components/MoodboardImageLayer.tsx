@@ -149,6 +149,11 @@ function MoodboardImageItem({
   // (including the book's mobile -90° rotation) automatically during drag.
   const mx = useMotionValue(image.x);
   const my = useMotionValue(image.y);
+  // MotionValues for size + rotation — updated directly in move handlers to avoid
+  // React re-renders on every touch/pointer move event (mobile performance fix)
+  const widthMV    = useMotionValue(image.width);
+  const heightMV   = useMotionValue(image.height);
+  const rotateMV   = useMotionValue(image.rotation);
 
   // Live size + rotation (updated immediately during resize/rotate for smooth UX)
   const [live, setLive] = useState({
@@ -162,6 +167,9 @@ function MoodboardImageItem({
   useEffect(() => {
     mx.set(image.x);
     my.set(image.y);
+    widthMV.set(image.width);
+    heightMV.set(image.height);
+    rotateMV.set(image.rotation);
     const synced = { width: image.width, height: image.height, rotation: image.rotation };
     liveRef.current = synced;
     setLive(synced);
@@ -185,7 +193,6 @@ function MoodboardImageItem({
   allRef.current    = allImages;
   changeRef.current = onImagesChange;
   // Do NOT sync liveRef from live state here — it is written imperatively in move handlers.
-  liveRef.current   = live;
 
   // ── Screen ↔ page coordinate conversion ────────────────────────────────────
   // Accounts for bookScale and the optional -90° mobile rotation that wraps the
@@ -383,7 +390,7 @@ function MoodboardImageItem({
         const ang    = Math.atan2(e.clientY - cs.y, e.clientX - cs.x) * (180 / Math.PI);
         const newRot = img.rotation + (ang - act.startAngle!);
         liveRef.current = { ...liveRef.current, rotation: newRot };
-        setLive((prev) => ({ ...prev, rotation: newRot }));
+        rotateMV.set(newRot);
         return;
       }
 
@@ -463,7 +470,8 @@ function MoodboardImageItem({
       // Write to liveRef SYNCHRONOUSLY so handleInteractionUp always reads the
       // latest values regardless of whether React has re-rendered yet.
       liveRef.current = { ...liveRef.current, width: newW, height: newH };
-      setLive((prev) => ({ ...prev, width: newW, height: newH }));
+      widthMV.set(newW);
+      heightMV.set(newH);
     },
     [screenToPage, mx, my],
   );
@@ -552,7 +560,9 @@ function MoodboardImageItem({
       my.set(ts.cy0 - newH / 2);
       const nextLive = { width: newW, height: newH, rotation: ts.rot0 + dAngle };
       liveRef.current = nextLive;
-      setLive(nextLive);
+      widthMV.set(newW);
+      heightMV.set(newH);
+      rotateMV.set(nextLive.rotation);
     };
 
     const onTouchEnd = () => {
@@ -615,15 +625,16 @@ function MoodboardImageItem({
         left:            0,
         x:               mx,
         y:               my,
-        width:           live.width,
-        height:          live.height,
-        rotate:          live.rotation,
+        width:           widthMV,
+        height:          heightMV,
+        rotate:          rotateMV,
         scale:           1,
         transformOrigin: "center center",
         cursor:          isBlocked ? "default" : "grab",
         pointerEvents:   isBlocked ? "none" : "auto",
         touchAction:     "none",
         userSelect:      "none",
+        willChange:      "transform",
         zIndex:          isSelected ? ((image.zIndex ?? 1) + 100) : (image.zIndex ?? 1),
         overflow:        "visible",
         boxSizing:       "border-box",
@@ -631,6 +642,7 @@ function MoodboardImageItem({
       drag={!isTransforming}
       dragMomentum={false}
       dragElastic={0}
+      transformPagePoint={(p) => screenToPage(p.x, p.y)}
       onPointerDown={handlePointerDown}
       onMouseDown={stopNative}
       onPointerMove={handleInteractionMove}
