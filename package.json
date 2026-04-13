@@ -11,8 +11,10 @@
   "dependencies": {
     "@use-gesture/react": "^10.3.0",
     "framer-motion": "^11.1.7",
+    "html2canvas": "^1.4.1",
     "idb": "^8.0.0",
-    "next": "14.2.3",
+    "jspdf": "^4.2.1",
+    "next": "^14.2.35",
     "react": "^18",
     "react-colorful": "^5.6.1",
     "react-dom": "^18",
@@ -28,7 +30,7 @@
     "@types/uuid": "^9",
     "autoprefixer": "^10.0.1",
     "eslint": "^8",
-    "eslint-config-next": "14.2.3",
+    "eslint-config-next": "^16.2.3",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"

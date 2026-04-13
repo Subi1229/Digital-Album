@@ -255,7 +255,7 @@ export default function DrawingLayer({
 
   useEffect(() => {
     setMounted(true);
-    const checkSize = () => setIsSmallScreen(window.innerWidth < 640);
+    const checkSize = () => setIsSmallScreen(window.innerWidth < 768);
     checkSize();
     window.addEventListener("resize", checkSize);
     return () => {
@@ -275,7 +275,7 @@ export default function DrawingLayer({
   const toolbar = (
     <AnimatePresence>
       {isSmallScreen ? (
-        /* ── Mobile / tablet: horizontal bottom bar ── */
+        /* ── Mobile / tablet: horizontal bar at landscape-bottom (portrait left) ── */
         <motion.div
           key="mobile-toolbar"
           initial={{ opacity: 0, y: 40 }}

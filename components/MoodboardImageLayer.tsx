@@ -75,6 +75,7 @@ export default function MoodboardImageLayer({
     onImagesChange(images.map((img) => (img.id === id ? { ...img, zIndex: maxZ + 1 } : img)));
   }, [albumId, images, onImagesChange, pageIndex]);
 
+
   // Deselect on tap outside any image
   useEffect(() => {
     if (!selectedId) return;
@@ -642,7 +643,8 @@ function MoodboardImageItem({
       drag={!isTransforming}
       dragMomentum={false}
       dragElastic={0}
-      transformPagePoint={(p) => screenToPage(p.x, p.y)}
+      // @ts-ignore — transformPagePoint removed from FM types but still works at runtime
+      transformPagePoint={(p: { x: number; y: number }) => screenToPage(p.x, p.y)}
       onPointerDown={handlePointerDown}
       onMouseDown={stopNative}
       onPointerMove={handleInteractionMove}

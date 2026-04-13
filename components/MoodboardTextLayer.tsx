@@ -471,7 +471,8 @@ function MoodboardTextItem({
       drag={!editing && !rotating && !resizing}
       dragMomentum={false}
       dragElastic={0}
-      transformPagePoint={(p) => screenToPage(p.x, p.y)}
+      // @ts-ignore — transformPagePoint removed from FM types but still works at runtime
+      transformPagePoint={(p: { x: number; y: number }) => screenToPage(p.x, p.y)}
       onPointerDown={(e) => {
         e.stopPropagation();
         (e.nativeEvent as Event).stopImmediatePropagation();

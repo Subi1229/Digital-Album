@@ -697,7 +697,8 @@ function DraggableSticker({
       drag={!isGesturing && !isRotating && !isResizing}
       dragMomentum={false}
       dragElastic={0}
-      transformPagePoint={(p) => screenToPage(p.x, p.y)}
+      // @ts-ignore — transformPagePoint removed from FM types but still works at runtime
+      transformPagePoint={(p: { x: number; y: number }) => screenToPage(p.x, p.y)}
       onPointerDown={handlePointerDown}
       onMouseDown={stopNative}    // stops react-pageflip's mousedown listener (desktop)
       onPointerUp={handlePointerUp}

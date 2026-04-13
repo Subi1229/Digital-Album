@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import AlbumPage, { PAGE_W, PAGE_H, SLOT_ASPECT } from "./AlbumPage";
 import CropModal from "./CropModal";
 import StickerPanel from "./StickerPanel";
+import ShareModal from "./ShareModal";
 import { SlotImage, Sticker, LibrarySticker, PendingCrop, MoodboardImage, MoodboardText } from "@/lib/types";
 import {
   getAllImages,
@@ -178,6 +179,7 @@ export default function AlbumBook() {
   const [activeTab, setActiveTab] = useState<AlbumTab>("all");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [menuAlbumId, setMenuAlbumId] = useState<string | null>(null);
+  const [shareAlbumId, setShareAlbumId] = useState<string | null>(null);
   const [albumDialog, setAlbumDialog] = useState<AlbumDialog | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [albumFirstSlotImages, setAlbumFirstSlotImages] = useState<Record<string, string>>({});
@@ -602,25 +604,11 @@ export default function AlbumBook() {
     setAlbumDialog({ type: "delete", albumId });
     setMenuAlbumId(null);
   }, []);
-  const handleShareAlbum = useCallback(async (albumId: string) => {
-    const album = albums.find((a) => a.id === albumId);
-    if (!album) return;
-    const shareText = `Check out my album: ${album.name}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: album.name, text: shareText });
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareText);
-        window.alert("Album text copied to clipboard.");
-      } else {
-        window.alert(shareText);
-      }
-    } catch {
-      // no-op
-    } finally {
-      setMenuAlbumId(null);
-    }
-  }, [albums]);
+  const handleShareAlbum = useCallback((albumId: string) => {
+    setMenuAlbumId(null);
+    setIsSidebarOpen(false);
+    setShareAlbumId(albumId);
+  }, []);
   const dialogAlbumName =
     (albumDialog ? albums.find((a) => a.id === albumDialog.albumId)?.name : null) ?? "this album";
   const activeAlbumName = albums.find((a) => a.id === activeAlbumId)?.name ?? "My Photo Album";
@@ -1097,11 +1085,13 @@ export default function AlbumBook() {
               const cy = e.clientY - rect.top;
 
               if (isMobile) {
-                // Rotated mobile layout: top strip advances, bottom strip goes back.
+                // Rotated mobile layout: small corner zones only (top-center and bottom-center).
                 const liveIdx = bookRef.current?.pageFlip()?.getCurrentPageIndex() ?? currentPage;
-                const stripH = Math.max(44, Math.floor(rect.height * 0.22));
-                if (cy < stripH && liveIdx < TOTAL_PAGES - 2) { markCornerTap(); goNext(); }
-                else if (cy > rect.height - stripH && liveIdx > 0) { markCornerTap(); goPrev(); }
+                const cornerH = Math.min(48, Math.floor(rect.height * 0.10));
+                const cornerW = Math.min(60, Math.floor(rect.width * 0.20));
+                const inCenterX = cx > rect.width / 2 - cornerW && cx < rect.width / 2 + cornerW;
+                if (cy < cornerH && inCenterX && liveIdx < TOTAL_PAGES - 2) { markCornerTap(); goNext(); }
+                else if (cy > rect.height - cornerH && inCenterX && liveIdx > 0) { markCornerTap(); goPrev(); }
               } else {
                 // Desktop: bottom-left = prev, bottom-right = next
                 const rightClear = Math.max(20, Math.floor(34 * bookScale));
@@ -1262,16 +1252,18 @@ export default function AlbumBook() {
                 always reachable even when the book fills the full viewport */}
             {isMobile && (
               <>
-                <div style={{
-                  position: "absolute", left: "50%", top: 6,
-                  transform: "translateX(-50%)", zIndex: 20,
-                }}>
+                <div
+                  style={{ position: "absolute", left: "50%", top: 6, transform: "translateX(-50%)", zIndex: 20 }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                >
                   <NavButton direction="next" onClick={goNext} disabled={atEnd} rotated />
                 </div>
-                <div style={{
-                  position: "absolute", left: "50%", bottom: 6,
-                  transform: "translateX(-50%)", zIndex: 20,
-                }}>
+                <div
+                  style={{ position: "absolute", left: "50%", bottom: 6, transform: "translateX(-50%)", zIndex: 20 }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                >
                   <NavButton direction="prev" onClick={goPrev} disabled={atStart} rotated />
                 </div>
               </>
@@ -1668,6 +1660,31 @@ export default function AlbumBook() {
 
       {/* â”€â”€ Modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <CropModal pending={pendingCrop} onDone={handleCropDone} onCancel={handleCropCancel} />
+
+      {/* ── Share Modal ── */}
+      <AnimatePresence>
+        {shareAlbumId && (() => {
+          const shareAlbum = albums.find((a) => a.id === shareAlbumId);
+          if (!shareAlbum) return null;
+          return (
+            <ShareModal
+              key="share-modal"
+              albumId={shareAlbumId}
+              albumName={shareAlbum.name}
+              totalPages={TOTAL_PAGES}
+              images={images}
+              stickers={stickers}
+              moodboardImages={moodboardImages}
+              moodboardTexts={moodboardTexts}
+              drawings={drawings}
+              bgImageUrl={bgImageUrl}
+              getPageTemplateId={getPageTemplateId}
+              getPageImages={getPageImages}
+              onClose={() => setShareAlbumId(null)}
+            />
+          );
+        })()}
+      </AnimatePresence>
       <StickerPanel
         isOpen={stickerPanelOpen}
         onClose={() => setStickerPanelOpen(false)}
