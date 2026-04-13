@@ -13,7 +13,7 @@ import { markStickerPress } from "@/lib/stickerInteraction";
 
 // ── Rotate zone constants (mirrors MoodboardImageLayer) ──────────────────────
 const ROT_SIZE = 26;  // invisible rotate hit-area size (px)
-const ROT_OFF  = 30;  // distance outside corner (positive = outside element)
+const ROT_OFF = 30;  // distance outside corner (positive = outside element)
 
 // ─── StickerLayer ─────────────────────────────────────────────────────────────
 interface StickerLayerProps {
@@ -22,10 +22,11 @@ interface StickerLayerProps {
   containerWidth: number;
   containerHeight: number;
   onStickersChange: (stickers: Sticker[]) => void;
+  forExport?: boolean;
 }
 
 export default function StickerLayer(props: StickerLayerProps) {
-  const { stickers, pageIndex, containerWidth, containerHeight, onStickersChange } = props;
+  const { stickers, pageIndex, containerWidth, containerHeight, onStickersChange, forExport = false } = props;
   const pageStickers = stickers.filter((s) => s.pageIndex === pageIndex);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -88,6 +89,7 @@ export default function StickerLayer(props: StickerLayerProps) {
             isBlocked={activeId !== null && activeId !== sticker.id}
             onManipulateStart={() => startTransition(() => setActiveId(sticker.id))}
             onManipulateEnd={() => startTransition(() => setActiveId(null))}
+            forExport={forExport}
           />
         ))}
       </AnimatePresence>
@@ -121,7 +123,7 @@ interface PeelAnimationProps {
 
 function PeelAnimation({ sticker, originX, originY, peelScale = 1, onDone }: PeelAnimationProps) {
   const stuckRef = useRef<HTMLDivElement>(null);
-  const flapRef  = useRef<HTMLDivElement>(null);
+  const flapRef = useRef<HTMLDivElement>(null);
   const frontRef = useRef<HTMLDivElement>(null);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
@@ -186,7 +188,7 @@ function PeelAnimation({ sticker, originX, originY, peelScale = 1, onDone }: Pee
       if (rawP < 1) {
         rafId = requestAnimationFrame(tick);
       } else {
-        if (flapRef.current)  flapRef.current.style.opacity  = "0";
+        if (flapRef.current) flapRef.current.style.opacity = "0";
         if (stuckRef.current) stuckRef.current.style.opacity = "0";
         timerID = setTimeout(() => onDoneRef.current(), VANISH_DELAY);
       }
@@ -207,21 +209,21 @@ function PeelAnimation({ sticker, originX, originY, peelScale = 1, onDone }: Pee
   return (
     <div
       style={{
-        position:        "absolute",
-        top:             0,
-        left:            0,
+        position: "absolute",
+        top: 0,
+        left: 0,
         // peelScale preserves the visual size the sticker had at the moment
         // of the double-tap — prevents the "snap back to base size" glitch.
         // transformOrigin matches DraggableSticker so position doesn't jump.
-        transform:       `translate(${originX}px, ${originY}px) rotate(${sticker.rotation}deg) scale(${peelScale})`,
+        transform: `translate(${originX}px, ${originY}px) rotate(${sticker.rotation}deg) scale(${peelScale})`,
         transformOrigin: "center center",
-        width:           sticker.width,
-        height:          sticker.height,
+        width: sticker.width,
+        height: sticker.height,
         // MOBILE FIX: "auto" instead of "none" so the ~300 ms ghost click that
         // the browser synthesises after touchend lands here and goes no further,
         // preventing it from reaching the ImageSlot underneath.
-        pointerEvents:   "auto",
-        zIndex:          20,
+        pointerEvents: "auto",
+        zIndex: 20,
       }}
     >
       {/* Stuck layer — part still adhered; mask retreats toward top-left */}
@@ -278,6 +280,7 @@ interface DraggableStickerProps {
   isBlocked: boolean;
   onManipulateStart: () => void;
   onManipulateEnd: () => void;
+  forExport?: boolean;
 }
 
 function DraggableSticker({
@@ -293,6 +296,7 @@ function DraggableSticker({
   isBlocked,
   onManipulateStart,
   onManipulateEnd,
+  forExport = false,
 }: DraggableStickerProps) {
   // Tight content bounds in element-px space (non-transparent pixel area of the PNG)
   const [contentBounds, setContentBounds] = useState<{ left: number; top: number; bw: number; bh: number } | null>(null);
@@ -338,18 +342,18 @@ function DraggableSticker({
 
   // ── Stable refs for manipulate callbacks (safe in useEffect) ─────────────
   const onManipulateStartRef = useRef(onManipulateStart);
-  const onManipulateEndRef   = useRef(onManipulateEnd);
+  const onManipulateEndRef = useRef(onManipulateEnd);
   onManipulateStartRef.current = onManipulateStart;
-  onManipulateEndRef.current   = onManipulateEnd;
+  onManipulateEndRef.current = onManipulateEnd;
 
   // ── Refs so event handlers always see current prop values ────────────────
   // (avoids adding sticker/allStickers/onStickersChange to every useEffect dep)
-  const stickerRef    = useRef(sticker);
-  const allStickersR  = useRef(allStickers);
-  const onChangeRef   = useRef(onStickersChange);
-  stickerRef.current   = sticker;
+  const stickerRef = useRef(sticker);
+  const allStickersR = useRef(allStickers);
+  const onChangeRef = useRef(onStickersChange);
+  stickerRef.current = sticker;
   allStickersR.current = allStickers;
-  onChangeRef.current  = onStickersChange;
+  onChangeRef.current = onStickersChange;
 
   // ── Pinch-to-resize + two-finger rotate (mobile) ────────────────────────────
   const pinchRef = useRef<{ dist: number; angle0: number; scale: number; rot0: number } | null>(null);
@@ -366,10 +370,10 @@ function DraggableSticker({
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         pinchRef.current = {
-          dist:   Math.hypot(dx, dy),
+          dist: Math.hypot(dx, dy),
           angle0: Math.atan2(dy, dx),
-          scale:  scaleMotion.get(),
-          rot0:   rotateMotion.get(),
+          scale: scaleMotion.get(),
+          rot0: rotateMotion.get(),
         };
         setIsGesturing(true);
         onManipulateStartRef.current();
@@ -383,9 +387,9 @@ function DraggableSticker({
       if (!pinchRef.current || e.touches.length !== 2) return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      const dx    = e.touches[0].clientX - e.touches[1].clientX;
-      const dy    = e.touches[0].clientY - e.touches[1].clientY;
-      const ratio  = Math.hypot(dx, dy) / pinchRef.current.dist;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const ratio = Math.hypot(dx, dy) / pinchRef.current.dist;
       const dAngle = (Math.atan2(dy, dx) - pinchRef.current.angle0) * (180 / Math.PI);
       scaleMotion.set(Math.max(0.25, Math.min(5, pinchRef.current.scale * ratio)));
       rotateMotion.set(pinchRef.current.rot0 + dAngle);
@@ -394,7 +398,7 @@ function DraggableSticker({
     const onTouchEnd = async () => {
       if (!pinchRef.current) return;
       const newScale = scaleMotion.get();
-      const newRot   = rotateMotion.get();
+      const newRot = rotateMotion.get();
       pinchRef.current = null;
       setIsGesturing(false);
       onManipulateEndRef.current();
@@ -403,15 +407,15 @@ function DraggableSticker({
       await saveSticker(updated);
     };
 
-    el.addEventListener("touchstart",  onTouchStart,  { passive: true  });
-    el.addEventListener("touchmove",   onTouchMove,   { passive: false });
-    el.addEventListener("touchend",    onTouchEnd,    { passive: true  });
-    el.addEventListener("touchcancel", onTouchEnd,    { passive: true  });
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    el.addEventListener("touchcancel", onTouchEnd, { passive: true });
 
     return () => {
-      el.removeEventListener("touchstart",  onTouchStart);
-      el.removeEventListener("touchmove",   onTouchMove);
-      el.removeEventListener("touchend",    onTouchEnd);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
     };
   }, [scaleMotion, rotateMotion]); // eslint-disable-line
@@ -438,20 +442,20 @@ function DraggableSticker({
     const el = containerRef.current;
     if (!el) return { x: sx, y: sy };
     const rect = el.getBoundingClientRect();
-    const scaleFlat = rect.width  / containerWidth;
-    const scaleRot  = rect.width  / containerHeight;
+    const scaleFlat = rect.width / containerWidth;
+    const scaleRot = rect.width / containerHeight;
     const isRotated =
-      Math.abs(rect.height - containerWidth  * scaleRot ) <
+      Math.abs(rect.height - containerWidth * scaleRot) <
       Math.abs(rect.height - containerHeight * scaleFlat);
     if (!isRotated) {
       const scale = rect.width / containerWidth;
       return { x: (sx - rect.left) / scale, y: (sy - rect.top) / scale };
     }
-    const scale  = rect.width / containerHeight;
-    const rectCx = rect.left + rect.width  / 2;
-    const rectCy = rect.top  + rect.height / 2;
+    const scale = rect.width / containerHeight;
+    const rectCx = rect.left + rect.width / 2;
+    const rectCy = rect.top + rect.height / 2;
     return {
-      x: containerWidth  / 2 - (sy - rectCy) / scale,
+      x: containerWidth / 2 - (sy - rectCy) / scale,
       y: containerHeight / 2 + (sx - rectCx) / scale,
     };
   }, [containerRef, containerWidth, containerHeight]);
@@ -462,9 +466,9 @@ function DraggableSticker({
     const curScale = scaleMotion.get();
     // With transformOrigin:"center center", the visual center = (x + w/2, y + h/2)
     // and stays fixed regardless of scale. Clamp so the center stays inside the page.
-    const hw = sticker.width  / 2;
+    const hw = sticker.width / 2;
     const hh = sticker.height / 2;
-    const clampedX = Math.max(-hw, Math.min(containerWidth  - hw, rawX));
+    const clampedX = Math.max(-hw, Math.min(containerWidth - hw, rawX));
     const clampedY = Math.max(-hh, Math.min(containerHeight - hh, rawY));
     x.set(clampedX);
     y.set(clampedY);
@@ -546,8 +550,8 @@ function DraggableSticker({
     // this point stays fixed during rotation so angle math never drifts.
     const rect = divRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const cx = rect.left + rect.width  / 2;
-    const cy = rect.top  + rect.height / 2;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
     const startAngle = Math.atan2(e.clientY - cy, e.clientX - cx) * (180 / Math.PI);
     rotateActiveRef.current = { cx, cy, startAngle, startRot: rotateMotion.get() };
     setIsRotating(true);
@@ -653,9 +657,9 @@ function DraggableSticker({
 
   // Shared props for all four invisible corner resize zones
   const cornerZoneProps = {
-    onPointerDown:   handleCornerPointerDown,
-    onPointerMove:   handleCornerPointerMove,
-    onPointerUp:     handleCornerPointerUp,
+    onPointerDown: handleCornerPointerDown,
+    onPointerMove: handleCornerPointerMove,
+    onPointerUp: handleCornerPointerUp,
     onPointerCancel: handleCornerPointerUp,
   };
   const CORNER = 20; // hit-area size in px
@@ -684,7 +688,7 @@ function DraggableSticker({
         pointerEvents: isBlocked ? "none" : (contentBounds && Math.max(sticker.width, sticker.height) * (sticker.scale ?? 1) > 100 ? "none" : "auto"),
         touchAction: "none",
         userSelect: "none",
-        willChange: "transform",
+        willChange: forExport ? undefined : "transform",
         zIndex: 5 + zOrder,
         boxSizing: "border-box",
         border: (() => {
@@ -716,99 +720,101 @@ function DraggableSticker({
       {/* Selection border tightly wrapping non-transparent pixel content — large stickers only */}
       {isSelected && contentBounds && Math.max(sticker.width, sticker.height) * (sticker.scale ?? 1) > 100 && (
         <div style={{
-          position:     "absolute",
-          left:         contentBounds.left,
-          top:          contentBounds.top,
-          width:        contentBounds.bw,
-          height:       contentBounds.bh,
-          border:       "2px dashed #A4A4A4",
+          position: "absolute",
+          left: contentBounds.left,
+          top: contentBounds.top,
+          width: contentBounds.bw,
+          height: contentBounds.bh,
+          border: "2px dashed #A4A4A4",
           borderRadius: 2,
           pointerEvents: "none",
-          boxSizing:    "border-box",
+          boxSizing: "border-box",
         }} />
       )}
 
-      <img
-        src={sticker.dataUrl}
-        alt="sticker"
-        onLoad={(e) => {
-          const imgEl = e.currentTarget;
-          const nw = imgEl.naturalWidth;
-          const nh = imgEl.naturalHeight;
-          if (!nw || !nh) return;
-          const ew = sticker.width, eh = sticker.height;
-          // Defer pixel scan off the render cycle so the sticker renders immediately
-          setTimeout(() => {
-            try {
-              const canvas = document.createElement("canvas");
-              // Downsample large images for faster scanning (max 256px side)
-              const maxSide = 256;
-              const scanScale = Math.min(1, maxSide / Math.max(nw, nh));
-              const sw = Math.round(nw * scanScale);
-              const sh = Math.round(nh * scanScale);
-              canvas.width = sw;
-              canvas.height = sh;
-              const ctx = canvas.getContext("2d");
-              if (!ctx) return;
-              ctx.drawImage(imgEl, 0, 0, sw, sh);
-              const { data } = ctx.getImageData(0, 0, sw, sh);
-              let minX = sw, maxX = -1, minY = sh, maxY = -1;
-              for (let py = 0; py < sh; py++) {
-                for (let px = 0; px < sw; px++) {
-                  if (data[(py * sw + px) * 4 + 3] > 10) {
-                    if (px < minX) minX = px;
-                    if (px > maxX) maxX = px;
-                    if (py < minY) minY = py;
-                    if (py > maxY) maxY = py;
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <img
+          src={sticker.dataUrl}
+          alt="sticker"
+          onLoad={(e) => {
+            const imgEl = e.currentTarget;
+            const nw = imgEl.naturalWidth;
+            const nh = imgEl.naturalHeight;
+            if (!nw || !nh) return;
+            const ew = sticker.width, eh = sticker.height;
+            // Defer pixel scan off the render cycle so the sticker renders immediately
+            setTimeout(() => {
+              try {
+                const canvas = document.createElement("canvas");
+                // Downsample large images for faster scanning (max 256px side)
+                const maxSide = 256;
+                const scanScale = Math.min(1, maxSide / Math.max(nw, nh));
+                const sw = Math.round(nw * scanScale);
+                const sh = Math.round(nh * scanScale);
+                canvas.width = sw;
+                canvas.height = sh;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) return;
+                ctx.drawImage(imgEl, 0, 0, sw, sh);
+                const { data } = ctx.getImageData(0, 0, sw, sh);
+                let minX = sw, maxX = -1, minY = sh, maxY = -1;
+                for (let py = 0; py < sh; py++) {
+                  for (let px = 0; px < sw; px++) {
+                    if (data[(py * sw + px) * 4 + 3] > 10) {
+                      if (px < minX) minX = px;
+                      if (px > maxX) maxX = px;
+                      if (py < minY) minY = py;
+                      if (py > maxY) maxY = py;
+                    }
                   }
                 }
+                if (maxX >= minX && maxY >= minY) {
+                  // Map back from scan space → element space
+                  const fitScale = Math.min(ew / nw, eh / nh);
+                  const imgW = nw * fitScale, imgH = nh * fitScale;
+                  const offX = (ew - imgW) / 2, offY = (eh - imgH) / 2;
+                  const pixelScale = fitScale / scanScale;
+                  setContentBounds({
+                    left: offX + minX * pixelScale,
+                    top: offY + minY * pixelScale,
+                    bw: (maxX - minX + 1) * pixelScale,
+                    bh: (maxY - minY + 1) * pixelScale,
+                  });
+                }
+              } catch {
+                // Canvas taint or other error — leave contentBounds null so the
+                // full element stays interactive (pointerEvents: auto fallback).
               }
-              if (maxX >= minX && maxY >= minY) {
-                // Map back from scan space → element space
-                const fitScale = Math.min(ew / nw, eh / nh);
-                const imgW = nw * fitScale, imgH = nh * fitScale;
-                const offX = (ew - imgW) / 2, offY = (eh - imgH) / 2;
-                const pixelScale = fitScale / scanScale;
-                setContentBounds({
-                  left: offX + minX * pixelScale,
-                  top:  offY + minY * pixelScale,
-                  bw:   (maxX - minX + 1) * pixelScale,
-                  bh:   (maxY - minY + 1) * pixelScale,
-                });
-              }
-            } catch {
-              // Canvas taint or other error — leave contentBounds null so the
-              // full element stays interactive (pointerEvents: auto fallback).
-            }
-          }, 0);
-        }}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "contain",
-          display: "block",
-          pointerEvents: "none",
-          userSelect: "none",
-          // Browser uses high-quality bi-cubic interpolation at any CSS scale
-          imageRendering: "auto",
-        } as React.CSSProperties}
-        draggable={false}
-      />
+            }, 0);
+          }}
+          style={{
+            maxWidth: "100%",
+            maxHeight: "100%",
+            width: "auto",
+            height: "auto",
+            display: "block",
+            pointerEvents: "none",
+            userSelect: "none",
+            imageRendering: "auto",
+          } as React.CSSProperties}
+          draggable={false}
+        />
+      </div>
 
       {/* ── Content-area hit div for large stickers (limits drag/hover to visible area) ── */}
       {contentBounds && Math.max(sticker.width, sticker.height) * (sticker.scale ?? 1) > 100 && (
         <div
           data-sticker={sticker.id}
           style={{
-            position:     "absolute",
-            left:         contentBounds.left,
-            top:          contentBounds.top,
-            width:        contentBounds.bw,
-            height:       contentBounds.bh,
+            position: "absolute",
+            left: contentBounds.left,
+            top: contentBounds.top,
+            width: contentBounds.bw,
+            height: contentBounds.bh,
             pointerEvents: isBlocked ? "none" : "auto",
-            cursor:       isBlocked ? "default" : "grab",
-            touchAction:  "none",
-            zIndex:       1,
+            cursor: isBlocked ? "default" : "grab",
+            touchAction: "none",
+            zIndex: 1,
           }}
           onPointerDown={handlePointerDownContent}
           onPointerUp={handlePointerUp}
@@ -816,10 +822,10 @@ function DraggableSticker({
       )}
 
       {/* ── Invisible corner resize zones — only active when selected ── */}
-      <div {...cornerZoneProps} style={{ position: "absolute", top: 0,    left:  0,    width: CORNER, height: CORNER, cursor: "nwse-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
-      <div {...cornerZoneProps} style={{ position: "absolute", top: 0,    right: 0,    width: CORNER, height: CORNER, cursor: "nesw-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
-      <div {...cornerZoneProps} style={{ position: "absolute", bottom: 0, left:  0,    width: CORNER, height: CORNER, cursor: "nesw-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
-      <div {...cornerZoneProps} style={{ position: "absolute", bottom: 0, right: 0,    width: CORNER, height: CORNER, cursor: "nwse-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
+      <div {...cornerZoneProps} style={{ position: "absolute", top: 0, left: 0, width: CORNER, height: CORNER, cursor: "nwse-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
+      <div {...cornerZoneProps} style={{ position: "absolute", top: 0, right: 0, width: CORNER, height: CORNER, cursor: "nesw-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
+      <div {...cornerZoneProps} style={{ position: "absolute", bottom: 0, left: 0, width: CORNER, height: CORNER, cursor: "nesw-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
+      <div {...cornerZoneProps} style={{ position: "absolute", bottom: 0, right: 0, width: CORNER, height: CORNER, cursor: "nwse-resize", touchAction: "none", pointerEvents: isSelected && !isDragging && !isRotating ? "auto" : "none", zIndex: 10 }} />
 
       {/* ── Invisible rotate zones — only active when selected ── */}
       {(() => {
@@ -829,10 +835,10 @@ function DraggableSticker({
         // Small stickers: zones outside element corners (standard -ROT_OFF)
         // Large stickers: zones outside contentBounds corners so they sit just
         //   beyond the visible inner border and are easy to find
-        const tlR = isLarge && cb ? { top: cb.top - ROT_OFF,                        left: cb.left - ROT_OFF }                              : { top: -ROT_OFF,    left:  -ROT_OFF };
-        const trR = isLarge && cb ? { top: cb.top - ROT_OFF,                        left: cb.left + cb.bw + ROT_OFF - ROT_SIZE }            : { top: -ROT_OFF,    right: -ROT_OFF };
-        const blR = isLarge && cb ? { top: cb.top + cb.bh + ROT_OFF - ROT_SIZE,     left: cb.left - ROT_OFF }                              : { bottom: -ROT_OFF, left:  -ROT_OFF };
-        const brR = isLarge && cb ? { top: cb.top + cb.bh + ROT_OFF - ROT_SIZE,     left: cb.left + cb.bw + ROT_OFF - ROT_SIZE }            : { bottom: -ROT_OFF, right: -ROT_OFF };
+        const tlR = isLarge && cb ? { top: cb.top - ROT_OFF, left: cb.left - ROT_OFF } : { top: -ROT_OFF, left: -ROT_OFF };
+        const trR = isLarge && cb ? { top: cb.top - ROT_OFF, left: cb.left + cb.bw + ROT_OFF - ROT_SIZE } : { top: -ROT_OFF, right: -ROT_OFF };
+        const blR = isLarge && cb ? { top: cb.top + cb.bh + ROT_OFF - ROT_SIZE, left: cb.left - ROT_OFF } : { bottom: -ROT_OFF, left: -ROT_OFF };
+        const brR = isLarge && cb ? { top: cb.top + cb.bh + ROT_OFF - ROT_SIZE, left: cb.left + cb.bw + ROT_OFF - ROT_SIZE } : { bottom: -ROT_OFF, right: -ROT_OFF };
         const rp = { onPointerDown: handleRotatePointerDown, onPointerMove: handleRotatePointerMove, onPointerUp: handleRotatePointerUp, onPointerCancel: handleRotatePointerUp };
         const rs: React.CSSProperties = { position: "absolute", width: ROT_SIZE, height: ROT_SIZE, cursor: "grab", touchAction: "none", pointerEvents: rotPE as any, zIndex: 8, background: "transparent" };
         return (<>

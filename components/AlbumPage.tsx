@@ -107,6 +107,10 @@ export interface AlbumPageProps {
   isDrawingActive?: boolean;
   onStartDrawing?: (pageIndex: number) => void;
   onStopDrawing?: (onStop: () => void) => void;
+  /** Hide toolbar UI buttons (used during export/share capture) */
+  hideUI?: boolean;
+  /** Disable contain/transform optimisations so html2canvas captures correctly */
+  forExport?: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -134,6 +138,8 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
       isDrawingActive,
       onStartDrawing,
       onStopDrawing,
+      hideUI = false,
+      forExport = false,
     },
     ref
   ) => {
@@ -251,11 +257,11 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             position: "relative",
             overflow: "hidden",
             flexShrink: 0,
-            isolation: "isolate",
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-            transform: "translateZ(0)",
-            contain: "strict",
+            isolation: forExport ? undefined : "isolate",
+            backfaceVisibility: forExport ? undefined : "hidden",
+            WebkitBackfaceVisibility: forExport ? undefined : "hidden",
+            transform: forExport ? undefined : "translateZ(0)",
+            contain: forExport ? undefined : "strict",
           }}
         >
           {/* Hidden file input for moodboard images */}
@@ -281,6 +287,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
               boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
               border: "1.5px solid rgba(0,0,0,0.05)",
               zIndex: 60,
+              display: hideUI ? "none" : undefined,
             }}
             whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
             whileTap={{ scale: 0.92 }}
@@ -311,6 +318,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
               fontWeight: 700,
               color: "#57534E",
               fontFamily: "Georgia, serif",
+              display: hideUI ? "none" : undefined,
             }}
             whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
             whileTap={{ scale: 0.92 }}
@@ -333,6 +341,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
               boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
               border: "1.5px solid rgba(0,0,0,0.05)",
               zIndex: 60,
+              display: hideUI ? "none" : undefined,
             }}
             whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
             whileTap={{ scale: 0.92 }}
@@ -356,7 +365,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
           </motion.button>
 
           {/* Pencil (Drawing) button */}
-          <button 
+          <button
             onClick={() => onStartDrawing?.(pageIndex)}
             className="absolute flex items-center justify-center rounded-full"
             style={{
@@ -370,6 +379,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
               border: "1.5px solid rgba(0,0,0,0.05)",
               zIndex: 60,
               color: isDrawingActive ? "#FFFFFF" : "#79716B",
+              display: hideUI ? "none" : undefined,
             }}
             title="Freehand Drawing"
           >
@@ -392,6 +402,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
               containerWidth={PAGE_W}
               containerHeight={PAGE_H}
               onImagesChange={onMoodboardImagesChange ?? (() => { })}
+              forExport={forExport}
             />
           </div>
 
@@ -451,6 +462,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
               containerWidth={PAGE_W}
               containerHeight={PAGE_H}
               onStickersChange={onStickersChange}
+              forExport={forExport}
             />
           </div>
         </div>
@@ -468,11 +480,11 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
           position: "relative",
           overflow: "hidden",
           flexShrink: 0,
-          isolation: "isolate",
-          backfaceVisibility: "hidden",
-          WebkitBackfaceVisibility: "hidden",
-          transform: "translateZ(0)",
-          contain: "strict",
+          isolation: forExport ? undefined : "isolate",
+          backfaceVisibility: forExport ? undefined : "hidden",
+          WebkitBackfaceVisibility: forExport ? undefined : "hidden",
+          transform: forExport ? undefined : "translateZ(0)",
+          contain: forExport ? undefined : "strict",
         }}
       >
         {/* ── Page-edge gradient ───────────────────────────────────── z:1 */}
@@ -509,6 +521,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
             border: "1.5px solid rgba(0,0,0,0.05)",
             zIndex: 60,
+            display: hideUI ? "none" : undefined,
           }}
           whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
           whileTap={{ scale: 0.92 }}
@@ -581,6 +594,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             containerWidth={PAGE_W}
             containerHeight={PAGE_H}
             onStickersChange={onStickersChange}
+            forExport={forExport}
           />
         </div>
 

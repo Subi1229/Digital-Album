@@ -45,6 +45,7 @@ interface MoodboardImageLayerProps {
   containerWidth: number;
   containerHeight: number;
   onImagesChange: (images: MoodboardImage[]) => void;
+  forExport?: boolean;
 }
 
 export default function MoodboardImageLayer({
@@ -54,6 +55,7 @@ export default function MoodboardImageLayer({
   containerWidth,
   containerHeight,
   onImagesChange,
+  forExport = false,
 }: MoodboardImageLayerProps) {
   const pageImages = images.filter(
     (img) => img.albumId === albumId && (typeof img.pageIndex !== "number" || img.pageIndex === pageIndex),
@@ -112,6 +114,7 @@ export default function MoodboardImageLayer({
           isBlocked={activeId !== null && activeId !== img.id}
           onManipulateStart={() => startTransition(() => setActiveId(img.id))}
           onManipulateEnd={() => startTransition(() => setActiveId(null))}
+          forExport={forExport}
         />
       ))}
     </div>
@@ -131,6 +134,7 @@ interface ItemProps {
   isBlocked: boolean;
   onManipulateStart: () => void;
   onManipulateEnd: () => void;
+  forExport?: boolean;
 }
 
 function MoodboardImageItem({
@@ -145,6 +149,7 @@ function MoodboardImageItem({
   isBlocked,
   onManipulateStart,
   onManipulateEnd,
+  forExport = false,
 }: ItemProps) {
   // Position via MotionValues — Framer Motion handles the CSS transform chain
   // (including the book's mobile -90° rotation) automatically during drag.
@@ -635,7 +640,7 @@ function MoodboardImageItem({
         pointerEvents:   isBlocked ? "none" : "auto",
         touchAction:     "none",
         userSelect:      "none",
-        willChange:      "transform",
+        willChange:      forExport ? undefined : "transform",
         zIndex:          isSelected ? ((image.zIndex ?? 1) + 100) : (image.zIndex ?? 1),
         overflow:        "visible",
         boxSizing:       "border-box",
@@ -655,21 +660,17 @@ function MoodboardImageItem({
       whileDrag={{ cursor: "grabbing", zIndex: (image.zIndex ?? 1) + 120 }}
     >
       {/* ── Photo ─────────────────────────────────────────────────────────── */}
-      <img
-        src={image.src}
-        alt="moodboard"
+      <div
         style={{
-          position:      "absolute",
-          inset:         0,
-          width:         "100%",
-          height:        "100%",
-          objectFit:     "cover",
-          borderRadius:  RADIUS,
-          display:       "block",
-          pointerEvents: "none",
-          userSelect:    "none",
+          position:           "absolute",
+          inset:              0,
+          backgroundImage:    `url(${image.src})`,
+          backgroundSize:     "cover",
+          backgroundPosition: "center",
+          backgroundRepeat:   "no-repeat",
+          borderRadius:       RADIUS,
+          pointerEvents:      "none",
         }}
-        draggable={false}
       />
 
       {/* ── Selection border ──────────────────────────────────────────────── */}
