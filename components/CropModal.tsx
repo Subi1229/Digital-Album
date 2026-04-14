@@ -40,9 +40,9 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
     if (!pending || !croppedAreaPixels) return;
     setProcessing(true);
     try {
-      // Output at 3Ã— for retina quality
-      const outW = Math.round(121 * 3);
-      const outH = Math.round(158 * 3);
+      // Output at 8× for high-quality export (html2canvas scale 6 needs ~738px per slot)
+      const outW = Math.round(121 * 8);
+      const outH = Math.round(158 * 8);
       const dataUrl = await getCroppedImg(
         pending.objectUrl,
         croppedAreaPixels,

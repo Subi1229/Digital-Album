@@ -1346,7 +1346,7 @@ export default function AlbumBook() {
             ))}
           </div>
           <p className="text-xs font-sans tracking-wide transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52" }}>
-            Spread {spreadIndex + 1} / {totalSpreads}
+            Page {spreadIndex + 1} / {totalSpreads}
           </p>
         </motion.div>
       )}

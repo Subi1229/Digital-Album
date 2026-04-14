@@ -13,10 +13,10 @@ import { Sticker, MoodboardImage, MoodboardText } from "@/lib/types";
 export const PAGE_W = 478;
 export const PAGE_H = 650;
 
-const GRID_X = 28;
-const GRID_Y = 47;
-const GRID_W = 416;
-const GRID_H = 554;
+export const GRID_X = 28;
+export const GRID_Y = 47;
+export const GRID_W = 416;
+export const GRID_H = 554;
 const COLS = 3;
 const ROWS = 3;
 const COL_GAP = 8;
@@ -24,8 +24,8 @@ const ROW_GAP = 10;
 
 const SLOT_W = (GRID_W - (COLS - 1) * COL_GAP) / COLS;
 const SLOT_H = (GRID_H - (ROWS - 1) * ROW_GAP) / ROWS;
-const INNER_PAD_X = 5;
-const INNER_PAD_Y = 6;
+export const INNER_PAD_X = 5;
+export const INNER_PAD_Y = 6;
 
 export const SLOT_ASPECT = SLOT_W / SLOT_H;
 
@@ -38,7 +38,7 @@ const T4_TOP_H = 344;
 
 type SlotDef = { x: number; y: number; w: number; h: number };
 
-function getSlotDefs(templateId: number, isLeft: boolean): SlotDef[] {
+export function getSlotDefs(templateId: number, isLeft: boolean): SlotDef[] {
   if (templateId === 2) {
     return Array.from({ length: ROWS }, (_, r) =>
       Array.from({ length: 2 }, (_, c) => ({
@@ -489,6 +489,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
       >
         {/* ── Page-edge gradient ───────────────────────────────────── z:1 */}
         <div
+          data-export-hide="true"
           className="absolute inset-0 pointer-events-none"
           style={{
             background: isLeft
@@ -500,6 +501,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
 
         {/* ── Top paper texture ────────────────────────────────────── z:1 */}
         <div
+          data-export-hide="true"
           className="absolute inset-0 pointer-events-none"
           style={{
             background: "linear-gradient(180deg, rgba(250,249,247,0.4) 0%, transparent 30%)",
@@ -600,6 +602,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
 
         {/* ── Page number ──────────────────────────────────────────── z:4 */}
         <div
+          data-export-hide="true"
           className="absolute font-sans"
           style={{
             bottom: 20,
@@ -617,6 +620,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
 
         {/* ── Spine line ───────────────────────────────────────────── z:3 */}
         <div
+          data-export-hide="true"
           className="absolute top-0 bottom-0 w-px pointer-events-none"
           style={{
             [isLeft ? "right" : "left"]: 0,
