@@ -11,20 +11,20 @@ import { motion, useMotionValue } from "framer-motion";
 import { MoodboardImage } from "@/lib/types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CORNER_H   = 24;   // invisible corner resize hit area
+const CORNER_H = 24;   // invisible corner resize hit area
 const CORNER_OFF = -(CORNER_H / 2);
-const EDGE_LONG  = 28;   // invisible edge resize hit area (long side)
+const EDGE_LONG = 28;   // invisible edge resize hit area (long side)
 const EDGE_SHORT = 10;   // invisible edge resize hit area (short side)
-const EDGE_OFF   = -(EDGE_SHORT / 2);
-const ROT_SIZE   = 26;   // invisible rotate hit area
-const ROT_OFF    = -30;  // rotate zone offset from corner (outside)
-const DEL_SIZE   = 22;   // delete button diameter
-const MIN_DIM    = 40;   // minimum image dimension (px)
-const RADIUS     = 15;   // image border-radius
+const EDGE_OFF = -(EDGE_SHORT / 2);
+const ROT_SIZE = 26;   // invisible rotate hit area
+const ROT_OFF = -30;  // rotate zone offset from corner (outside)
+const DEL_SIZE = 22;   // delete button diameter
+const MIN_DIM = 40;   // minimum image dimension (px)
+const RADIUS = 15;   // image border-radius
 
 type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
-type RotHandle   = "rot-ne" | "rot-nw" | "rot-se" | "rot-sw";
-type HandleType  = ResizeHandle | RotHandle;
+type RotHandle = "rot-ne" | "rot-nw" | "rot-se" | "rot-sw";
+type HandleType = ResizeHandle | RotHandle;
 
 interface ActiveInteraction {
   type: "resize" | "rotate";
@@ -157,9 +157,9 @@ function MoodboardImageItem({
   const my = useMotionValue(image.y);
   // MotionValues for size + rotation — updated directly in move handlers to avoid
   // React re-renders on every touch/pointer move event (mobile performance fix)
-  const widthMV    = useMotionValue(image.width);
-  const heightMV   = useMotionValue(image.height);
-  const rotateMV   = useMotionValue(image.rotation);
+  const widthMV = useMotionValue(image.width);
+  const heightMV = useMotionValue(image.height);
+  const rotateMV = useMotionValue(image.rotation);
 
   // Live size + rotation (updated immediately during resize/rotate for smooth UX)
   const [live, setLive] = useState({
@@ -181,22 +181,22 @@ function MoodboardImageItem({
     setLive(synced);
   }, [image.x, image.y, image.width, image.height, image.rotation]); // eslint-disable-line
 
-  const divRef    = useRef<HTMLDivElement>(null);
+  const divRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<ActiveInteraction | null>(null);
 
   // Stable refs so event handlers never become stale
-  const imageRef    = useRef(image);
-  const allRef      = useRef(allImages);
-  const changeRef   = useRef(onImagesChange);
+  const imageRef = useRef(image);
+  const allRef = useRef(allImages);
+  const changeRef = useRef(onImagesChange);
   const onManipulateStartRef = useRef(onManipulateStart);
-  const onManipulateEndRef   = useRef(onManipulateEnd);
+  const onManipulateEndRef = useRef(onManipulateEnd);
   onManipulateStartRef.current = onManipulateStart;
-  onManipulateEndRef.current   = onManipulateEnd;
+  onManipulateEndRef.current = onManipulateEnd;
   // liveRef is updated SYNCHRONOUSLY in every move handler so handleInteractionUp
   // always reads the latest values regardless of React render batching.
-  const liveRef     = useRef(live);
-  imageRef.current  = image;
-  allRef.current    = allImages;
+  const liveRef = useRef(live);
+  imageRef.current = image;
+  allRef.current = allImages;
   changeRef.current = onImagesChange;
   // Do NOT sync liveRef from live state here — it is written imperatively in move handlers.
 
@@ -213,9 +213,9 @@ function MoodboardImageItem({
       // Heuristic: if the container's rendered width is closer to containerHeight
       // than containerWidth, the page has been rotated -90° (mobile layout).
       const scaleFlat = rect.width / containerWidth;
-      const scaleRot  = rect.width / containerHeight;
+      const scaleRot = rect.width / containerHeight;
       const isRotated =
-        Math.abs(rect.height - containerWidth  * scaleRot ) <
+        Math.abs(rect.height - containerWidth * scaleRot) <
         Math.abs(rect.height - containerHeight * scaleFlat);
 
       if (!isRotated) {
@@ -228,10 +228,10 @@ function MoodboardImageItem({
       //   px = containerWidth/2  − (sy − rectCy) / scale
       //   py = containerHeight/2 + (sx − rectCx) / scale
       const scale = rect.width / containerHeight;
-      const rectCx = rect.left + rect.width  / 2;
-      const rectCy = rect.top  + rect.height / 2;
+      const rectCx = rect.left + rect.width / 2;
+      const rectCy = rect.top + rect.height / 2;
       return {
-        x: containerWidth  / 2 - (sy - rectCy) / scale,
+        x: containerWidth / 2 - (sy - rectCy) / scale,
         y: containerHeight / 2 + (sx - rectCx) / scale,
       };
     },
@@ -246,12 +246,12 @@ function MoodboardImageItem({
       const rect = el.getBoundingClientRect();
 
       const scaleFlat = rect.width / containerWidth;
-      const scaleRot  = rect.width / containerHeight;
+      const scaleRot = rect.width / containerHeight;
       const isRotated =
-        Math.abs(rect.height - containerWidth  * scaleRot ) <
+        Math.abs(rect.height - containerWidth * scaleRot) <
         Math.abs(rect.height - containerHeight * scaleFlat);
 
-      const pageCx = img.x + img.width  / 2;
+      const pageCx = img.x + img.width / 2;
       const pageCy = img.y + img.height / 2;
 
       if (!isRotated) {
@@ -263,11 +263,11 @@ function MoodboardImageItem({
       //   sx = rectCx + (pageCy − containerHeight/2) * scale
       //   sy = rectCy − (pageCx − containerWidth/2)  * scale
       const scale = rect.width / containerHeight;
-      const rectCx = rect.left + rect.width  / 2;
-      const rectCy = rect.top  + rect.height / 2;
+      const rectCx = rect.left + rect.width / 2;
+      const rectCy = rect.top + rect.height / 2;
       return {
         x: rectCx + (pageCy - containerHeight / 2) * scale,
-        y: rectCy - (pageCx - containerWidth  / 2) * scale,
+        y: rectCy - (pageCx - containerWidth / 2) * scale,
       };
     },
     [containerRef, containerWidth, containerHeight],
@@ -298,12 +298,12 @@ function MoodboardImageItem({
   );
 
   const handleDragEnd = useCallback(() => {
-    const img  = imageRef.current;
-    const lt   = liveRef.current;
+    const img = imageRef.current;
+    const lt = liveRef.current;
     const rawX = mx.get();
     const rawY = my.get();
-    const clX  = Math.max(0, Math.min(containerWidth  - lt.width,  rawX));
-    const clY  = Math.max(0, Math.min(containerHeight - lt.height, rawY));
+    const clX = Math.max(0, Math.min(containerWidth - lt.width, rawX));
+    const clY = Math.max(0, Math.min(containerHeight - lt.height, rawY));
     mx.set(clX);
     my.set(clY);
     const updated = {
@@ -335,12 +335,12 @@ function MoodboardImageItem({
       setIsTransforming(true);
       onManipulateStartRef.current();
 
-      const img  = imageRef.current;
-      const cx   = img.x + img.width  / 2;
-      const cy   = img.y + img.height / 2;
-      const hw   = img.width  / 2;
-      const hh   = img.height / 2;
-      const rad  = (img.rotation * Math.PI) / 180;
+      const img = imageRef.current;
+      const cx = img.x + img.width / 2;
+      const cy = img.y + img.height / 2;
+      const hw = img.width / 2;
+      const hh = img.height / 2;
+      const rad = (img.rotation * Math.PI) / 180;
       const cosR = Math.cos(rad);
       const sinR = Math.sin(rad);
 
@@ -349,13 +349,13 @@ function MoodboardImageItem({
         let ax = cx, ay = cy;
         switch (handle as ResizeHandle) {
           case "se": ({ x: ax, y: ay } = rotateLocal(cx, cy, -hw, -hh, cosR, sinR)); break;
-          case "sw": ({ x: ax, y: ay } = rotateLocal(cx, cy,  hw, -hh, cosR, sinR)); break;
-          case "ne": ({ x: ax, y: ay } = rotateLocal(cx, cy, -hw,  hh, cosR, sinR)); break;
-          case "nw": ({ x: ax, y: ay } = rotateLocal(cx, cy,  hw,  hh, cosR, sinR)); break;
-          case "e":  ({ x: ax, y: ay } = rotateLocal(cx, cy, -hw,   0, cosR, sinR)); break;
-          case "w":  ({ x: ax, y: ay } = rotateLocal(cx, cy,  hw,   0, cosR, sinR)); break;
-          case "s":  ({ x: ax, y: ay } = rotateLocal(cx, cy,   0, -hh, cosR, sinR)); break;
-          case "n":  ({ x: ax, y: ay } = rotateLocal(cx, cy,   0,  hh, cosR, sinR)); break;
+          case "sw": ({ x: ax, y: ay } = rotateLocal(cx, cy, hw, -hh, cosR, sinR)); break;
+          case "ne": ({ x: ax, y: ay } = rotateLocal(cx, cy, -hw, hh, cosR, sinR)); break;
+          case "nw": ({ x: ax, y: ay } = rotateLocal(cx, cy, hw, hh, cosR, sinR)); break;
+          case "e": ({ x: ax, y: ay } = rotateLocal(cx, cy, -hw, 0, cosR, sinR)); break;
+          case "w": ({ x: ax, y: ay } = rotateLocal(cx, cy, hw, 0, cosR, sinR)); break;
+          case "s": ({ x: ax, y: ay } = rotateLocal(cx, cy, 0, -hh, cosR, sinR)); break;
+          case "n": ({ x: ax, y: ay } = rotateLocal(cx, cy, 0, hh, cosR, sinR)); break;
         }
         activeRef.current = {
           type: "resize", handle,
@@ -363,7 +363,7 @@ function MoodboardImageItem({
           anchor: { x: ax, y: ay },
         };
       } else {
-        const cs  = centerScreen(img);
+        const cs = centerScreen(img);
         const ang = Math.atan2(e.clientY - cs.y, e.clientX - cs.x) * (180 / Math.PI);
         activeRef.current = {
           type: "rotate", handle,
@@ -382,18 +382,18 @@ function MoodboardImageItem({
       const act = activeRef.current;
       if (!act) return;
 
-      const img  = act.startImg;
-      const rad  = (img.rotation * Math.PI) / 180;
+      const img = act.startImg;
+      const rad = (img.rotation * Math.PI) / 180;
       const cosR = Math.cos(rad);
       const sinR = Math.sin(rad);
-      const hw   = img.width  / 2;
-      const hh   = img.height / 2;
-      const cx   = img.x + hw;
-      const cy   = img.y + hh;
+      const hw = img.width / 2;
+      const hh = img.height / 2;
+      const cx = img.x + hw;
+      const cy = img.y + hh;
 
       if (act.type === "rotate") {
-        const cs     = act.centerScreen!;
-        const ang    = Math.atan2(e.clientY - cs.y, e.clientX - cs.x) * (180 / Math.PI);
+        const cs = act.centerScreen!;
+        const ang = Math.atan2(e.clientY - cs.y, e.clientX - cs.x) * (180 / Math.PI);
         const newRot = img.rotation + (ang - act.startAngle!);
         liveRef.current = { ...liveRef.current, rotation: newRot };
         rotateMV.set(newRot);
@@ -402,12 +402,12 @@ function MoodboardImageItem({
 
       // ── Resize ──────────────────────────────────────────────────────────
       const anchor = act.anchor!;
-      const ptr    = screenToPage(e.clientX, e.clientY);
-      const dax    = ptr.x - anchor.x;
-      const day    = ptr.y - anchor.y;
+      const ptr = screenToPage(e.clientX, e.clientY);
+      const dax = ptr.x - anchor.x;
+      const day = ptr.y - anchor.y;
 
       // Project pointer delta (from anchor) onto image-local axes
-      const localX =  dax * cosR + day * sinR;
+      const localX = dax * cosR + day * sinR;
       const localY = -dax * sinR + day * cosR;
 
       let newW = img.width, newH = img.height;
@@ -416,53 +416,53 @@ function MoodboardImageItem({
       switch (act.handle as ResizeHandle) {
         // ── Corners: midpoint formula + diagonal projection ──────────────
         case "se":
-          newW  = Math.max(MIN_DIM,  localX);
-          newH  = Math.max(MIN_DIM,  localY);
+          newW = Math.max(MIN_DIM, localX);
+          newH = Math.max(MIN_DIM, localY);
           newCx = (anchor.x + ptr.x) / 2;
           newCy = (anchor.y + ptr.y) / 2;
           break;
         case "sw":
-          newW  = Math.max(MIN_DIM, -localX);
-          newH  = Math.max(MIN_DIM,  localY);
+          newW = Math.max(MIN_DIM, -localX);
+          newH = Math.max(MIN_DIM, localY);
           newCx = (anchor.x + ptr.x) / 2;
           newCy = (anchor.y + ptr.y) / 2;
           break;
         case "ne":
-          newW  = Math.max(MIN_DIM,  localX);
-          newH  = Math.max(MIN_DIM, -localY);
+          newW = Math.max(MIN_DIM, localX);
+          newH = Math.max(MIN_DIM, -localY);
           newCx = (anchor.x + ptr.x) / 2;
           newCy = (anchor.y + ptr.y) / 2;
           break;
         case "nw":
-          newW  = Math.max(MIN_DIM, -localX);
-          newH  = Math.max(MIN_DIM, -localY);
+          newW = Math.max(MIN_DIM, -localX);
+          newH = Math.max(MIN_DIM, -localY);
           newCx = (anchor.x + ptr.x) / 2;
           newCy = (anchor.y + ptr.y) / 2;
           break;
         case "e": {
-          newW  = Math.max(MIN_DIM, localX);
-          newH  = img.height;
+          newW = Math.max(MIN_DIM, localX);
+          newH = img.height;
           newCx = anchor.x + (newW / 2) * cosR;
           newCy = anchor.y + (newW / 2) * sinR;
           break;
         }
         case "w": {
-          newW  = Math.max(MIN_DIM, -localX);
-          newH  = img.height;
+          newW = Math.max(MIN_DIM, -localX);
+          newH = img.height;
           newCx = anchor.x - (newW / 2) * cosR;
           newCy = anchor.y - (newW / 2) * sinR;
           break;
         }
         case "s": {
-          newW  = img.width;
-          newH  = Math.max(MIN_DIM, localY);
+          newW = img.width;
+          newH = Math.max(MIN_DIM, localY);
           newCx = anchor.x - (newH / 2) * sinR;
           newCy = anchor.y + (newH / 2) * cosR;
           break;
         }
         case "n": {
-          newW  = img.width;
-          newH  = Math.max(MIN_DIM, -localY);
+          newW = img.width;
+          newH = Math.max(MIN_DIM, -localY);
           newCx = anchor.x + (newH / 2) * sinR;
           newCy = anchor.y - (newH / 2) * cosR;
           break;
@@ -491,13 +491,13 @@ function MoodboardImageItem({
       setIsTransforming(false);
       onManipulateEndRef.current();
       const img = imageRef.current;
-      const lt  = liveRef.current;
+      const lt = liveRef.current;
       const updated: MoodboardImage = {
         ...img,
         x: mx.get(),
         y: my.get(),
-        width:    lt.width,
-        height:   lt.height,
+        width: lt.width,
+        height: lt.height,
         rotation: lt.rotation,
       };
       startTransition(() => {
@@ -541,13 +541,13 @@ function MoodboardImageItem({
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const img = imageRef.current;
       touchRef.current = {
-        dist0:  Math.hypot(dx, dy),
+        dist0: Math.hypot(dx, dy),
         angle0: Math.atan2(dy, dx),
-        w0:   img.width,
-        h0:   img.height,
+        w0: img.width,
+        h0: img.height,
         rot0: img.rotation,
-        cx0:  img.x + img.width  / 2,
-        cy0:  img.y + img.height / 2,
+        cx0: img.x + img.width / 2,
+        cy0: img.y + img.height / 2,
       };
     };
 
@@ -555,13 +555,13 @@ function MoodboardImageItem({
       if (!touchRef.current || e.touches.length !== 2) return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      const ts  = touchRef.current;
-      const dx  = e.touches[0].clientX - e.touches[1].clientX;
-      const dy  = e.touches[0].clientY - e.touches[1].clientY;
-      const ratio  = Math.hypot(dx, dy) / ts.dist0;
+      const ts = touchRef.current;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const ratio = Math.hypot(dx, dy) / ts.dist0;
       const dAngle = (Math.atan2(dy, dx) - ts.angle0) * (180 / Math.PI);
-      const newW   = Math.max(MIN_DIM, Math.min(1000, ts.w0 * ratio));
-      const newH   = Math.max(MIN_DIM, Math.min(1000, ts.h0 * ratio));
+      const newW = Math.max(MIN_DIM, Math.min(1000, ts.w0 * ratio));
+      const newH = Math.max(MIN_DIM, Math.min(1000, ts.h0 * ratio));
       mx.set(ts.cx0 - newW / 2);
       my.set(ts.cy0 - newH / 2);
       const nextLive = { width: newW, height: newH, rotation: ts.rot0 + dAngle };
@@ -577,7 +577,7 @@ function MoodboardImageItem({
       setIsTransforming(false);
       onManipulateEndRef.current();
       const img = imageRef.current;
-      const lt  = liveRef.current;
+      const lt = liveRef.current;
       const updated: MoodboardImage = {
         ...img, x: mx.get(), y: my.get(),
         width: lt.width, height: lt.height, rotation: lt.rotation,
@@ -585,14 +585,14 @@ function MoodboardImageItem({
       changeRef.current(allRef.current.map((i) => (i.id === img.id ? updated : i)));
     };
 
-    el.addEventListener("touchstart",  onTouchStart,  { passive: true  });
-    el.addEventListener("touchmove",   onTouchMove,   { passive: false });
-    el.addEventListener("touchend",    onTouchEnd,    { passive: true  });
-    el.addEventListener("touchcancel", onTouchEnd,    { passive: true  });
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    el.addEventListener("touchcancel", onTouchEnd, { passive: true });
     return () => {
-      el.removeEventListener("touchstart",  onTouchStart);
-      el.removeEventListener("touchmove",   onTouchMove);
-      el.removeEventListener("touchend",    onTouchEnd);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
     };
   }, [mx, my]); // eslint-disable-line
@@ -603,15 +603,15 @@ function MoodboardImageItem({
     style: React.CSSProperties;
     cursor: string;
   }[] = [
-    { handle: "nw", cursor: "nwse-resize", style: { top: CORNER_OFF, left: CORNER_OFF, width: CORNER_H, height: CORNER_H, borderRadius: "50%" } },
-    { handle: "ne", cursor: "nesw-resize", style: { top: CORNER_OFF, right: CORNER_OFF, width: CORNER_H, height: CORNER_H, borderRadius: "50%" } },
-    { handle: "se", cursor: "nwse-resize", style: { bottom: CORNER_OFF, right: CORNER_OFF, width: CORNER_H, height: CORNER_H, borderRadius: "50%" } },
-    { handle: "sw", cursor: "nesw-resize", style: { bottom: CORNER_OFF, left: CORNER_OFF, width: CORNER_H, height: CORNER_H, borderRadius: "50%" } },
-    { handle: "n",  cursor: "ns-resize",   style: { top: EDGE_OFF, left: "50%", transform: "translateX(-50%)", width: EDGE_LONG, height: EDGE_SHORT, borderRadius: 2 } },
-    { handle: "s",  cursor: "ns-resize",   style: { bottom: EDGE_OFF, left: "50%", transform: "translateX(-50%)", width: EDGE_LONG, height: EDGE_SHORT, borderRadius: 2 } },
-    { handle: "e",  cursor: "ew-resize",   style: { right: EDGE_OFF, top: "50%", transform: "translateY(-50%)", width: EDGE_SHORT, height: EDGE_LONG, borderRadius: 2 } },
-    { handle: "w",  cursor: "ew-resize",   style: { left: EDGE_OFF, top: "50%", transform: "translateY(-50%)", width: EDGE_SHORT, height: EDGE_LONG, borderRadius: 2 } },
-  ];
+      { handle: "nw", cursor: "nwse-resize", style: { top: CORNER_OFF, left: CORNER_OFF, width: CORNER_H, height: CORNER_H, borderRadius: "50%" } },
+      { handle: "ne", cursor: "nesw-resize", style: { top: CORNER_OFF, right: CORNER_OFF, width: CORNER_H, height: CORNER_H, borderRadius: "50%" } },
+      { handle: "se", cursor: "nwse-resize", style: { bottom: CORNER_OFF, right: CORNER_OFF, width: CORNER_H, height: CORNER_H, borderRadius: "50%" } },
+      { handle: "sw", cursor: "nesw-resize", style: { bottom: CORNER_OFF, left: CORNER_OFF, width: CORNER_H, height: CORNER_H, borderRadius: "50%" } },
+      { handle: "n", cursor: "ns-resize", style: { top: EDGE_OFF, left: "50%", transform: "translateX(-50%)", width: EDGE_LONG, height: EDGE_SHORT, borderRadius: 2 } },
+      { handle: "s", cursor: "ns-resize", style: { bottom: EDGE_OFF, left: "50%", transform: "translateX(-50%)", width: EDGE_LONG, height: EDGE_SHORT, borderRadius: 2 } },
+      { handle: "e", cursor: "ew-resize", style: { right: EDGE_OFF, top: "50%", transform: "translateY(-50%)", width: EDGE_SHORT, height: EDGE_LONG, borderRadius: 2 } },
+      { handle: "w", cursor: "ew-resize", style: { left: EDGE_OFF, top: "50%", transform: "translateY(-50%)", width: EDGE_SHORT, height: EDGE_LONG, borderRadius: 2 } },
+    ];
 
   const rotHandles: { handle: RotHandle; style: React.CSSProperties }[] = [
     { handle: "rot-nw", style: { top: ROT_OFF, left: ROT_OFF } },
@@ -626,24 +626,24 @@ function MoodboardImageItem({
       data-mbimage={image.id}
       ref={divRef}
       style={{
-        position:        "absolute",
-        top:             0,
-        left:            0,
-        x:               mx,
-        y:               my,
-        width:           widthMV,
-        height:          heightMV,
-        rotate:          rotateMV,
-        scale:           1,
+        position: "absolute",
+        top: 0,
+        left: 0,
+        x: mx,
+        y: my,
+        width: widthMV,
+        height: heightMV,
+        rotate: rotateMV,
+        scale: 1,
         transformOrigin: "center center",
-        cursor:          isBlocked ? "default" : "grab",
-        pointerEvents:   isBlocked ? "none" : "auto",
-        touchAction:     "none",
-        userSelect:      "none",
-        willChange:      forExport ? undefined : "transform",
-        zIndex:          isSelected ? ((image.zIndex ?? 1) + 100) : (image.zIndex ?? 1),
-        overflow:        "visible",
-        boxSizing:       "border-box",
+        cursor: isBlocked ? "default" : "grab",
+        pointerEvents: isBlocked ? "none" : "auto",
+        touchAction: "none",
+        userSelect: "none",
+        willChange: forExport ? undefined : "transform",
+        zIndex: isSelected ? ((image.zIndex ?? 1) + 100) : (image.zIndex ?? 1),
+        overflow: "visible",
+        boxSizing: "border-box",
       }}
       drag={!isTransforming}
       dragMomentum={false}
@@ -662,14 +662,14 @@ function MoodboardImageItem({
       {/* ── Photo ─────────────────────────────────────────────────────────── */}
       <div
         style={{
-          position:           "absolute",
-          inset:              0,
-          backgroundImage:    `url(${image.src})`,
-          backgroundSize:     "cover",
+          position: "absolute",
+          inset: 0,
+          backgroundImage: `url(${image.src})`,
+          backgroundSize: "cover",
           backgroundPosition: "center",
-          backgroundRepeat:   "no-repeat",
-          borderRadius:       RADIUS,
-          pointerEvents:      "none",
+          backgroundRepeat: "no-repeat",
+          borderRadius: RADIUS,
+          pointerEvents: "none",
         }}
       />
 
@@ -677,12 +677,12 @@ function MoodboardImageItem({
       {isSelected && (
         <div
           style={{
-            position:    "absolute",
-            inset:       0,
+            position: "absolute",
+            inset: 0,
             borderRadius: RADIUS,
-            border:      "1.5px dashed rgba(99,102,241,0.75)",
+            border: "1.5px dashed rgba(99,102,241,0.75)",
             pointerEvents: "none",
-            boxSizing:   "border-box",
+            boxSizing: "border-box",
           }}
         />
       )}
@@ -691,22 +691,22 @@ function MoodboardImageItem({
       {isSelected && (
         <div
           style={{
-            position:       "absolute",
-            top:            -(DEL_SIZE / 2),
-            right:          -(DEL_SIZE / 2),
-            width:          DEL_SIZE,
-            height:         DEL_SIZE,
-            borderRadius:   "50%",
-            background:     "#fff",
-            border:         "1.5px solid rgba(0,0,0,0.13)",
-            boxShadow:      "0 1px 5px rgba(0,0,0,0.18)",
-            display:        "flex",
-            alignItems:     "center",
+            position: "absolute",
+            top: -(DEL_SIZE / 2),
+            right: -(DEL_SIZE / 2),
+            width: DEL_SIZE,
+            height: DEL_SIZE,
+            borderRadius: "50%",
+            background: "#fff",
+            border: "1.5px solid rgba(0,0,0,0.13)",
+            boxShadow: "0 1px 5px rgba(0,0,0,0.18)",
+            display: "flex",
+            alignItems: "center",
             justifyContent: "center",
-            cursor:         "pointer",
-            zIndex:         30,
-            pointerEvents:  "auto",
-            touchAction:    "none",
+            cursor: "pointer",
+            zIndex: 30,
+            pointerEvents: "auto",
+            touchAction: "none",
           }}
           onPointerDown={handleDelete}
         >
@@ -723,12 +723,12 @@ function MoodboardImageItem({
           <div
             key={handle}
             style={{
-              position:     "absolute",
-              background:   "transparent",
+              position: "absolute",
+              background: "transparent",
               cursor,
-              zIndex:       20,
+              zIndex: 20,
               pointerEvents: "auto",
-              touchAction:  "none",
+              touchAction: "none",
               ...style,
             }}
             onPointerDown={(e) => startInteraction(e, "resize", handle)}
@@ -744,14 +744,14 @@ function MoodboardImageItem({
           <div
             key={handle}
             style={{
-              position:       "absolute",
-              width:          ROT_SIZE,
-              height:         ROT_SIZE,
-              cursor:         "grab",
-              zIndex:         15,
-              pointerEvents:  "auto",
-              touchAction:    "none",
-              background:     "transparent",
+              position: "absolute",
+              width: ROT_SIZE,
+              height: ROT_SIZE,
+              cursor: "grab",
+              zIndex: 15,
+              pointerEvents: "auto",
+              touchAction: "none",
+              background: "transparent",
               ...style,
             }}
             onPointerDown={(e) => startInteraction(e, "rotate", handle)}

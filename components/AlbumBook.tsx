@@ -4,6 +4,10 @@ import React, { useRef, useState, useCallback, useEffect, useMemo, startTransiti
 import HTMLFlipBook from "react-pageflip";
 import { motion, AnimatePresence } from "framer-motion";
 import AlbumPage, { PAGE_W, PAGE_H, SLOT_ASPECT } from "./AlbumPage";
+import MoodboardImageLayer from "./MoodboardImageLayer";
+import MoodboardTextLayer from "./MoodboardTextLayer";
+import StickerLayer from "./StickerLayer";
+import DrawingLayer from "./DrawingLayer";
 import CropModal from "./CropModal";
 import StickerPanel from "./StickerPanel";
 import ShareModal from "./ShareModal";
@@ -41,7 +45,7 @@ type AlbumMeta = {
   createdAt: number;
   isFavorite: boolean;
   lastOpenedAt: number;
-  templateId: 1 | 2 | 3 | 4 | 5;
+  templateId: 1 | 2 | 3 | 4 | 5 | 6;
   pageTemplates?: Record<number, 1 | 2 | 3 | 4>;
 };
 
@@ -86,7 +90,7 @@ function normalizeAlbums(raw: unknown): AlbumMeta[] {
         createdAt: a.createdAt,
         isFavorite: Boolean((a as any).isFavorite),
         lastOpenedAt: typeof (a as any).lastOpenedAt === "number" ? (a as any).lastOpenedAt : a.createdAt,
-        templateId: ([1, 2, 3, 4, 5].includes((a as any).templateId) ? (a as any).templateId : 1) as 1 | 2 | 3 | 4 | 5,
+        templateId: ([1, 2, 3, 4, 5, 6].includes((a as any).templateId) ? (a as any).templateId : 1) as 1 | 2 | 3 | 4 | 5 | 6,
         pageTemplates: (() => {
           const raw = (a as any).pageTemplates;
           if (!raw || typeof raw !== "object") return undefined;
@@ -169,6 +173,8 @@ export default function AlbumBook() {
   const [pendingCrop, setPendingCrop] = useState<PendingCrop | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFlipping, setIsFlipping] = useState(false);
+  const [isFlipAnimating, setIsFlipAnimating] = useState(false);
+  const spreadCanvasRef = useRef<HTMLDivElement>(null);
   const flipHalfTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [bookScale, setBookScale] = useState(1);
@@ -188,6 +194,7 @@ export default function AlbumBook() {
   const [pendingCustomStyles, setPendingCustomStyles] = useState<(1 | 2 | 3 | 4)[]>([]);
   const [bgImageUrl, setBgImageUrl] = useState<string | null>(null);
   const [isBgDark, setIsBgDark] = useState(false);
+  const [navDirection, setNavDirection] = useState<"next" | "prev">("next");
 
   useEffect(() => {
     if (!bgImageUrl) {
@@ -305,12 +312,12 @@ export default function AlbumBook() {
       setIsMobile(mobile);
       if (mobile) {
         // Book is shown rotated 90° — PAGE_H becomes the visual width
-        setBookScale(Math.min(1.1, (window.innerWidth - 40 - 64 - 16) / PAGE_H));
+        setBookScale(Math.min(1.2, (window.innerWidth - 40 - 64 - 16) / PAGE_H));
       } else {
         const availW = window.innerWidth - (44 + 20) * 2 - 32;
         const availH = window.innerHeight - 160;
         const bookW = PAGE_W * 2;
-        setBookScale(Math.min(1.15, availW / bookW, availH / PAGE_H));
+        setBookScale(Math.min(1.3, availW / bookW, availH / PAGE_H));
       }
     }
     compute();
@@ -357,7 +364,7 @@ export default function AlbumBook() {
       const entries = await Promise.all(
         albums.map(async (album) => {
           try {
-            const src = album.templateId === 5
+            const src = (album.templateId === 5 || album.templateId === 6)
               ? await getAlbumAnyImage(album.id)
               : await getAlbumFirstSlotImage(album.id);
             return [album.id, src] as const;
@@ -475,7 +482,7 @@ export default function AlbumBook() {
     setShowTemplateModal(true);
   }, []);
 
-  const handleConfirmTemplate = useCallback(async (tid: 1 | 2 | 3 | 4 | 5) => {
+  const handleConfirmTemplate = useCallback(async (tid: 1 | 2 | 3 | 4 | 5 | 6) => {
     setShowTemplateModal(false);
     const nextNumber = albums.length + 1;
     const createdAt = Date.now();
@@ -612,9 +619,9 @@ export default function AlbumBook() {
   const dialogAlbumName =
     (albumDialog ? albums.find((a) => a.id === albumDialog.albumId)?.name : null) ?? "this album";
   const activeAlbumName = albums.find((a) => a.id === activeAlbumId)?.name ?? "My Photo Album";
-  const activeTemplateId = (albums.find((a) => a.id === activeAlbumId)?.templateId ?? 1) as 1 | 2 | 3 | 4 | 5;
-  const activePageTemplateFallback: 1 | 2 | 3 | 4 | 5 = activeTemplateId;
-  const getPageTemplateId = useCallback((pageIdx: number): 1 | 2 | 3 | 4 | 5 => {
+  const activeTemplateId = (albums.find((a) => a.id === activeAlbumId)?.templateId ?? 1) as 1 | 2 | 3 | 4 | 5 | 6;
+  const activePageTemplateFallback: 1 | 2 | 3 | 4 | 5 | 6 = activeTemplateId;
+  const getPageTemplateId = useCallback((pageIdx: number): 1 | 2 | 3 | 4 | 5 | 6 => {
     const album = albums.find((a) => a.id === activeAlbumId);
     if (album?.pageTemplates) return album.pageTemplates[pageIdx] ?? activePageTemplateFallback;
     return activePageTemplateFallback;
@@ -628,15 +635,12 @@ export default function AlbumBook() {
   const pageSequence = Array.from({ length: TOTAL_PAGES }, (_, i) => i);
 
   // ————————————————————————————————————————————————————————————————————————————————
-  // MOBILE FIX: removed `currentPage` from deps — it was unused inside the callback
-  // and caused the function to be recreated on every flip. The dots' onClick
-  // captures `fn = goNext/goPrev` once; a stale reference still called the
-  // correct pf.flipNext/Prev(), but removing the dep makes the function
-  // stable so the closure is always fresh.
   const goNext = useCallback(() => {
+    setNavDirection("next");
     bookRef.current?.pageFlip()?.flipNext();
   }, []);
   const goPrev = useCallback(() => {
+    setNavDirection("prev");
     bookRef.current?.pageFlip()?.flipPrev();
   }, []);
 
@@ -656,8 +660,8 @@ export default function AlbumBook() {
     let total = 0;
     for (let pageIdx = 0; pageIdx < TOTAL_PAGES; pageIdx++) {
       const tid = getPageTemplateId(pageIdx);
-      if (tid === 5) continue;
-      total += slotsPerTemplate[tid];
+      if (tid === 5 || tid === 6) continue;
+      total += slotsPerTemplate[tid as 1 | 2 | 3 | 4];
     }
     return total;
   }, [getPageTemplateId]);
@@ -756,7 +760,7 @@ export default function AlbumBook() {
             </div>
           </div>
           <span className="text-[13px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52" }}>
-            {activeTemplateId === 5
+            {(activeTemplateId === 5 || activeTemplateId === 6)
               ? `${moodboardCount} photos`
               : `${Object.keys(images).length} / ${albumImageLimit} photos`}
           </span>
@@ -1030,11 +1034,12 @@ export default function AlbumBook() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Book Stage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ———————————————————————————————————————————————————————————————————————————————— */}
+      {/* Book Stage ————————————————————————————————————————————————————————————————————— */}
       <div className="flex-1 flex items-center justify-center w-full px-4" style={isMobile ? { paddingRight: 64, paddingLeft: 40, paddingTop: 20, paddingBottom: 20 } : {}}>
         <div className="flex items-center justify-center gap-5">
 
-          {/* LEFT ARROW â€” desktop only; on mobile the button overlays the book */}
+          {/* LEFT ARROW — desktop only; on mobile the button overlays the book */}
           {!isMobile && (
             <div style={{ flexShrink: 0, position: "relative", zIndex: 20 }}>
               <NavButton direction="prev" onClick={goPrev} disabled={atStart} />
@@ -1051,22 +1056,18 @@ export default function AlbumBook() {
             onPointerDown={(e) => {
               if ((e.target as Element).closest?.("[data-sticker]")) return;
 
-              if (isMobile && (e.target as Element).closest?.("[data-slot]")) {
-                // MOBILE FIX: photo slots and page corners physically overlap.
-                // Compute the corner zone here so we can decide:
-                //  â€¢ tap is in corner zone  â†’ set cornerTapRef (page flip wins)
-                //                             AND mark corner so ImageSlot suppresses click
-                //  â€¢ tap is NOT in corner   â†’ skip (let slot handle its own onClick)
-                const rect = e.currentTarget.getBoundingClientRect();
-                const cx = e.clientX - rect.left;
-                const cy = e.clientY - rect.top;
-                const edgeW = Math.max(44, Math.floor(rect.width * 0.2));
-                // Rotated mobile: top strip = prev, bottom strip = next (full width)
-                const inCorner = isMobile
-                  ? (cy < rect.height * 0.28 || cy > rect.height * 0.72)
-                  : (cy > rect.height * 0.72 && (cx < edgeW || cx > rect.width - edgeW));
-                if (!inCorner) return; // non-corner slot tap: let slot handle it
-                markCornerTap();       // corner slot tap: suppress slot, allow flip
+              if (isMobile) {
+                // Kill event propagation so internal library logic doesn't steal taps.
+                e.stopPropagation();
+
+                // Image slots always take priority — never hijack slot taps for flipping.
+                if ((e.target as Element).closest?.("[data-slot]")) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const cx = e.clientX - rect.left;
+                  // Only suppress slots if they are in the active right-edge nav zones
+                  const inRightEdge = cx > rect.width * 0.7;
+                  if (!inRightEdge) return;
+                }
               }
 
               cornerTapRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
@@ -1078,28 +1079,32 @@ export default function AlbumBook() {
               const dy = Math.abs(e.clientY - cornerTapRef.current.y);
               const dt = Date.now() - cornerTapRef.current.time;
               cornerTapRef.current = null;
-              if (dx > 10 || dy > 10 || dt > 450) return;
+              if (dx > (isMobile ? 25 : 10) || dy > (isMobile ? 25 : 10) || dt > 450) return;
 
               const rect = e.currentTarget.getBoundingClientRect();
               const cx = e.clientX - rect.left;
               const cy = e.clientY - rect.top;
 
               if (isMobile) {
-                // Rotated mobile layout: small corner zones only (top-center and bottom-center).
-                const liveIdx = bookRef.current?.pageFlip()?.getCurrentPageIndex() ?? currentPage;
-                const cornerH = Math.min(48, Math.floor(rect.height * 0.10));
-                const cornerW = Math.min(60, Math.floor(rect.width * 0.20));
-                const inCenterX = cx > rect.width / 2 - cornerW && cx < rect.width / 2 + cornerW;
-                if (cy < cornerH && inCenterX && liveIdx < TOTAL_PAGES - 2) { markCornerTap(); goNext(); }
-                else if (cy > rect.height - cornerH && inCenterX && liveIdx > 0) { markCornerTap(); goPrev(); }
+                // New Mobile Mapping: Top-Right (50% height) = Next, Bottom-Right (50% height) = Prev.
+                const inRightEdge = cx > rect.width * 0.7;
+                if (inRightEdge) {
+                  if (cy < rect.height / 2 && !atEnd) {
+                    markCornerTap();
+                    goNext();
+                  } else if (cy >= rect.height / 2 && !atStart) {
+                    markCornerTap();
+                    goPrev();
+                  }
+                }
               } else {
-                // Desktop: bottom-left = prev, bottom-right = next
+                // Desktop: bottom-left = prev, bottom-right = next.
                 const rightClear = Math.max(20, Math.floor(34 * bookScale));
                 const leftClear = Math.max(18, Math.floor(28 * bookScale));
                 const bottomClear = Math.max(28, Math.floor(49 * bookScale));
                 const inBottomStrip = cy > rect.height - bottomClear;
-                if (inBottomStrip && cx > rect.width - rightClear && !atEnd) { goNext(); }
-                else if (inBottomStrip && cx < leftClear && !atStart) { goPrev(); }
+                if (inBottomStrip && cx > rect.width - rightClear && !atEnd) { markCornerTap(); goNext(); }
+                else if (inBottomStrip && cx < leftClear && !atStart) { markCornerTap(); goPrev(); }
               }
             }}
           >
@@ -1182,6 +1187,34 @@ export default function AlbumBook() {
                     }} />
                   </div>
 
+                  {/* Template 6: full-spread overlay canvas — hidden imperatively during flip */}
+                  {activeTemplateId === 6 && (
+                    <div
+                      ref={spreadCanvasRef}
+                      style={{ position: "absolute", top: 0, left: 0, width: bookNaturalW, height: PAGE_H, zIndex: 10, overflow: "hidden" }}
+                    >
+                      <SpreadCanvas
+                        key={`spread6-${activeAlbumId}-${spreadIndex}`}
+                        albumId={activeAlbumId}
+                        pageIndex={spreadIndex * 2}
+                        width={bookNaturalW}
+                        height={PAGE_H}
+                        moodboardImages={moodboardImages}
+                        onMoodboardImagesChange={handleMoodboardImagesChange}
+                        moodboardTexts={moodboardTexts}
+                        onMoodboardTextsChange={handleMoodboardTextsChange}
+                        stickers={stickers}
+                        onStickersChange={handleStickersChange}
+                        drawings={drawings}
+                        onDrawingSave={handleDrawingSave}
+                        drawingActive={drawingPageIndex === spreadIndex * 2}
+                        onStartDrawing={() => setDrawingPageIndex(spreadIndex * 2)}
+                        onStopDrawing={() => setDrawingPageIndex(null)}
+                        onStickerPanelOpen={() => handleStickerPanelOpen(spreadIndex * 2)}
+                      />
+                    </div>
+                  )}
+
                   <HTMLFlipBook
                     key={`${activeAlbumId}-flip`}
                     ref={bookRef}
@@ -1199,11 +1232,19 @@ export default function AlbumBook() {
                     onFlip={(e: any) => setCurrentPage(e.data)}
                     onChangeState={(e: any) => {
                       if (e.data === "flipping") {
+                        // Hide spread canvas immediately (sync DOM) so flip animation is unobstructed
+                        if (spreadCanvasRef.current) spreadCanvasRef.current.style.visibility = "hidden";
+                        setIsFlipAnimating(true);
                         if (flipHalfTimerRef.current) clearTimeout(flipHalfTimerRef.current);
                         flipHalfTimerRef.current = setTimeout(() => setIsFlipping(true), 180);
                       } else {
                         if (flipHalfTimerRef.current) { clearTimeout(flipHalfTimerRef.current); flipHalfTimerRef.current = null; }
                         setIsFlipping(false);
+                        setIsFlipAnimating(false);
+                        // Restore after React has painted the new spread content
+                        requestAnimationFrame(() => {
+                          if (spreadCanvasRef.current) spreadCanvasRef.current.style.visibility = "";
+                        });
                       }
                     }}
                     className="album-flip"
@@ -1248,26 +1289,6 @@ export default function AlbumBook() {
               </div>
             </div>
 
-            {/* Mobile nav overlays â€” float inside the book bounds so they're
-                always reachable even when the book fills the full viewport */}
-            {isMobile && (
-              <>
-                <div
-                  style={{ position: "absolute", left: "50%", top: 6, transform: "translateX(-50%)", zIndex: 20 }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onPointerUp={(e) => e.stopPropagation()}
-                >
-                  <NavButton direction="next" onClick={goNext} disabled={atEnd} rotated />
-                </div>
-                <div
-                  style={{ position: "absolute", left: "50%", bottom: 6, transform: "translateX(-50%)", zIndex: 20 }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onPointerUp={(e) => e.stopPropagation()}
-                >
-                  <NavButton direction="prev" onClick={goPrev} disabled={atStart} rotated />
-                </div>
-              </>
-            )}
           </motion.div>
 
           {/* RIGHT ARROW â€” desktop only; on mobile the button overlays the book */}
@@ -1531,7 +1552,7 @@ export default function AlbumBook() {
                         <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-2">
                           <div className="p-2">
                             <div className="grid grid-cols-2 gap-3">
-                              {([1, 2, 3, 4, 5] as (1 | 2 | 3 | 4 | 5)[]).map((tid) => (
+                              {([1, 2, 3, 4, 5, 6] as (1 | 2 | 3 | 4 | 5 | 6)[]).map((tid) => (
                                 <motion.button
                                   key={tid}
                                   type="button"
@@ -1693,13 +1714,164 @@ export default function AlbumBook() {
         onStickersChange={handleStickersChange}
         libraryStickers={libraryStickers}
         onLibraryChange={handleLibraryChange}
-        showWashiTab={getPageTemplateId(stickerPanelPage) === 5}
+        showWashiTab={getPageTemplateId(stickerPanelPage) === 5 || getPageTemplateId(stickerPanelPage) === 6}
       />
     </div>
   );
 }
 
-function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 | 5 }) {
+// ── SpreadCanvas ─────────────────────────────────────────────────────────────
+// Full-spread (PAGE_W*2 × PAGE_H) free canvas overlay for template 6.
+// Rendered inside the book's scale wrapper so it inherits bookScale transforms.
+function SpreadCanvas({
+  albumId, pageIndex, width, height,
+  moodboardImages, onMoodboardImagesChange,
+  moodboardTexts, onMoodboardTextsChange,
+  stickers, onStickersChange,
+  drawings, onDrawingSave,
+  drawingActive, onStartDrawing, onStopDrawing,
+  onStickerPanelOpen,
+}: {
+  albumId: string;
+  pageIndex: number;
+  width: number;
+  height: number;
+  moodboardImages: MoodboardImage[];
+  onMoodboardImagesChange: (imgs: MoodboardImage[]) => void;
+  moodboardTexts: MoodboardText[];
+  onMoodboardTextsChange: (txts: MoodboardText[]) => void;
+  stickers: Sticker[];
+  onStickersChange: (s: Sticker[]) => void;
+  drawings: Record<number, string>;
+  onDrawingSave: (pageIndex: number, dataUrl: string) => void;
+  drawingActive: boolean;
+  onStartDrawing: () => void;
+  onStopDrawing: () => void;
+  onStickerPanelOpen: () => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const addImage = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      if (!dataUrl) return;
+      const img = new window.Image();
+      img.onload = () => {
+        const maxW = 400, maxH = 300;
+        const ratio = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+        const w = Math.round(img.naturalWidth * ratio);
+        const h = Math.round(img.naturalHeight * ratio);
+        const x = Math.round((width - w) / 2);
+        const y = Math.round((height - h) / 2);
+        const nextZ = moodboardImages.reduce((m, e) => Math.max(m, e.zIndex ?? 1), 1) + 1;
+        onMoodboardImagesChange([...moodboardImages, {
+          id: `mb-${albumId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          albumId, pageIndex, src: dataUrl, x, y, width: w, height: h, rotation: 0, zIndex: nextZ,
+        }]);
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  }, [albumId, moodboardImages, onMoodboardImagesChange, pageIndex, width, height]);
+
+  const addText = useCallback(() => {
+    const nextZ = moodboardTexts.reduce((m, e) => Math.max(m, e.zIndex ?? 1), 1) + 1;
+    onMoodboardTextsChange([...moodboardTexts, {
+      id: `mbtxt-${albumId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      albumId, pageIndex,
+      text: "Text",
+      x: Math.round(width * 0.35),
+      y: Math.round(height * 0.45),
+      width: 180, fontSize: 28,
+      fontFamily: "'Dancing Script', cursive",
+      fontWeight: "normal" as const,
+      fontStyle: "normal" as const,
+      color: "#3F3F46", rotation: 0, zIndex: nextZ,
+    }]);
+  }, [albumId, moodboardTexts, onMoodboardTextsChange, pageIndex, width, height]);
+
+  return (
+    <div
+      style={{
+        position: "absolute", top: 0, left: 0,
+        width, height,
+        background: "#FFFFFF",
+        zIndex: 10,
+        overflow: "hidden",
+      }}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files?.[0];
+        if (file?.type.startsWith("image/")) addImage(file);
+      }}
+    >
+      <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) { addImage(f); e.target.value = ""; } }} />
+
+      {/* Toolbar buttons — top right */}
+      <motion.button onClick={() => fileInputRef.current?.click()}
+        className="absolute flex items-center justify-center rounded-full"
+        style={{ top: 14, right: 16, width: 32, height: 32, background: "rgba(255,255,255,0.94)", boxShadow: "0 1px 6px rgba(0,0,0,0.09)", border: "1.5px solid rgba(0,0,0,0.05)", zIndex: 60 }}
+        whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.92 }} title="Add image">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#79716B" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+        </svg>
+      </motion.button>
+
+      <motion.button onClick={addText}
+        className="absolute flex items-center justify-center rounded-full"
+        style={{ top: 14, right: 56, width: 32, height: 32, background: "rgba(255,255,255,0.94)", boxShadow: "0 1px 6px rgba(0,0,0,0.09)", border: "1.5px solid rgba(0,0,0,0.05)", zIndex: 60, fontSize: 14, fontWeight: 700, color: "#57534E", fontFamily: "Georgia, serif" }}
+        whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.92 }} title="Add text">T
+      </motion.button>
+
+      <motion.button onClick={onStickerPanelOpen}
+        className="absolute flex items-center justify-center rounded-full"
+        style={{ top: 14, right: 96, width: 32, height: 32, background: "rgba(255,255,255,0.94)", boxShadow: "0 1px 6px rgba(0,0,0,0.09)", border: "1.5px solid rgba(0,0,0,0.05)", zIndex: 60 }}
+        whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.92 }} title="Sticker library">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#79716B" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" />
+          <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="2.5" /><line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="2.5" />
+        </svg>
+      </motion.button>
+
+      <button onClick={onStartDrawing}
+        className="absolute flex items-center justify-center rounded-full"
+        style={{ top: 14, right: 136, width: 32, height: 32, background: drawingActive ? "#1E1E1E" : "rgba(255,255,255,0.94)", boxShadow: "0 1px 6px rgba(0,0,0,0.09)", border: "1.5px solid rgba(0,0,0,0.05)", zIndex: 60, color: drawingActive ? "#FFFFFF" : "#79716B" }}
+        title="Freehand Drawing">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l5 5" /></svg>
+      </button>
+
+      {/* Layers */}
+      <div style={{ position: "absolute", inset: 0, zIndex: 45, pointerEvents: "none" }}>
+        <MoodboardImageLayer albumId={albumId} images={moodboardImages} pageIndex={pageIndex}
+          containerWidth={width} containerHeight={height} onImagesChange={onMoodboardImagesChange} />
+      </div>
+      <div style={{ position: "absolute", inset: 0, zIndex: 55, pointerEvents: "none" }}>
+        <MoodboardTextLayer albumId={albumId} pageIndex={pageIndex} texts={moodboardTexts}
+          containerWidth={width} containerHeight={height} onTextsChange={onMoodboardTextsChange} />
+      </div>
+      {drawings[pageIndex] && !drawingActive && (
+        <div className="absolute inset-0 z-[58] pointer-events-none">
+          <img src={drawings[pageIndex]} alt="drawing" className="w-full h-full object-contain" />
+        </div>
+      )}
+      {drawingActive && (
+        <DrawingLayer width={width} height={height} initialDataUrl={drawings?.[pageIndex]}
+          onSave={(dataUrl: string) => onDrawingSave(pageIndex, dataUrl)}
+          onClose={() => onStopDrawing()} />
+      )}
+      <div style={{ position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none" }}>
+        <StickerLayer stickers={stickers} pageIndex={pageIndex}
+          containerWidth={width} containerHeight={height} onStickersChange={onStickersChange} />
+      </div>
+    </div>
+  );
+}
+
+function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 | 5 | 6 }) {
   const W = 90;
   const H = 120;
   const px = 8;
@@ -1716,6 +1888,18 @@ function TemplatePreview({ templateId }: { templateId: 1 | 2 | 3 | 4 | 5 }) {
     return (
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         <rect width={W} height={H} rx={5} fill="rgb(240,240,240)" />
+      </svg>
+    );
+  }
+
+  if (templateId === 6) {
+    // Full-spread single canvas — show as wide rectangle with a centre line hint
+    return (
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <rect width={W} height={H} rx={5} fill="rgb(240,240,240)" />
+        {/* spine hint */}
+        <line x1={W / 2} y1={py} x2={W / 2} y2={H - py} stroke="rgb(200,200,200)" strokeWidth={1} strokeDasharray="3 2" />
+        <text x={W / 2} y={H / 2 + 4} textAnchor="middle" fontSize={9} fill="rgb(160,160,160)" fontFamily="sans-serif">full spread</text>
       </svg>
     );
   }

@@ -96,7 +96,7 @@ export interface AlbumPageProps {
   /** Called when the sticker emoji button is tapped – parent opens StickerPanel */
   onStickerPanelOpen: (pageIndex: number) => void;
   pageNumber: number;
-  templateId?: 1 | 2 | 3 | 4 | 5;
+  templateId?: 1 | 2 | 3 | 4 | 5 | 6;
   moodboardImages?: MoodboardImage[];
   onMoodboardImagesChange?: (imgs: MoodboardImage[]) => void;
   moodboardTexts?: MoodboardText[];
@@ -127,7 +127,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
       onStickersChange,
       onStickerPanelOpen,
       pageNumber,
-      templateId = 1,
+      templateId = 1 as 1 | 2 | 3 | 4 | 5 | 6,
       moodboardImages = [],
       onMoodboardImagesChange,
       moodboardTexts = [],
@@ -158,12 +158,14 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
           const img = new window.Image();
           img.onload = () => {
             // Default size: fit within 240×180, preserving aspect ratio
-            const maxW = 240, maxH = 180;
+            const maxW = templateId === 6 ? 400 : 240;
+            const maxH = templateId === 6 ? 300 : 180;
             const ratio = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
             const w = Math.round(img.naturalWidth * ratio);
             const h = Math.round(img.naturalHeight * ratio);
-            // Centered placement
-            const x = Math.round((PAGE_W - w) / 2);
+            // Centered placement — for style 6 use full spread width
+            const canvasW = templateId === 6 ? PAGE_W * 2 : PAGE_W;
+            const x = Math.round((canvasW - w) / 2);
             const y = Math.round((PAGE_H - h) / 2);
             const nextZ = moodboardImages.reduce((max, entry) => Math.max(max, entry.zIndex ?? 1), 1) + 1;
             const newImg: MoodboardImage = {
@@ -229,7 +231,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
         albumId,
         pageIndex,
         text: "Text",
-        x: Math.round(PAGE_W * 0.35),
+        x: Math.round((templateId === 6 ? PAGE_W * 2 : PAGE_W) * 0.35),
         y: Math.round(PAGE_H * 0.45),
         width: 180,
         fontSize: 28,
@@ -242,6 +244,41 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
       };
       onMoodboardTextsChange([...moodboardTexts, newText]);
     }, [albumId, moodboardTexts, onMoodboardTextsChange, pageIndex]);
+
+    // Template 6: each page shows its half of the full spread canvas for the flip animation.
+    // The SpreadCanvas overlay in AlbumBook covers this during normal viewing.
+    if (templateId === 6) {
+      const SPREAD_W = PAGE_W * 2;
+      // Right page: translate layers left by PAGE_W to reveal the right half of the spread
+      const offsetX = isLeft ? 0 : -PAGE_W;
+      return (
+        <div
+          ref={ref}
+          className="album-page"
+          style={{ width: PAGE_W, height: PAGE_H, background: "#FFFFFF", position: "relative", overflow: "hidden", flexShrink: 0 }}
+        >
+          <div style={{ position: "absolute", top: 0, left: offsetX, width: SPREAD_W, height: PAGE_H, pointerEvents: "none" }}>
+            <div style={{ position: "absolute", inset: 0, zIndex: 45, pointerEvents: "none" }}>
+              <MoodboardImageLayer albumId={albumId} images={moodboardImages} pageIndex={isLeft ? pageIndex : pageIndex - 1}
+                containerWidth={SPREAD_W} containerHeight={PAGE_H} onImagesChange={onMoodboardImagesChange ?? (() => {})} forExport={forExport} />
+            </div>
+            <div style={{ position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none" }}>
+              <StickerLayer stickers={stickers} pageIndex={isLeft ? pageIndex : pageIndex - 1}
+                containerWidth={SPREAD_W} containerHeight={PAGE_H} onStickersChange={onStickersChange} forExport={forExport} />
+            </div>
+            <div style={{ position: "absolute", inset: 0, zIndex: 55, pointerEvents: "none" }}>
+              <MoodboardTextLayer albumId={albumId} pageIndex={isLeft ? pageIndex : pageIndex - 1}
+                texts={moodboardTexts} containerWidth={SPREAD_W} containerHeight={PAGE_H} onTextsChange={onMoodboardTextsChange ?? (() => {})} />
+            </div>
+            {(() => { const pi = isLeft ? pageIndex : pageIndex - 1; return drawings[pi] && (
+              <div className="absolute inset-0 z-[58] pointer-events-none">
+                <img src={drawings[pi]} alt="drawing" className="w-full h-full object-contain" />
+              </div>
+            ); })()}
+          </div>
+        </div>
+      );
+    }
 
     if (templateId === 5) {
       return (
@@ -383,7 +420,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             }}
             title="Freehand Drawing"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l5 5"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l5 5" /></svg>
           </button>
 
           {/* Moodboard images layer (below stickers/washi) */}
@@ -428,10 +465,10 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
           {/* Saved Drawing Layer (non-interactive display) */}
           {drawings[pageIndex] && !isDrawingActive && (
             <div className="absolute inset-0 z-[58] pointer-events-none">
-              <img 
-                src={drawings[pageIndex]} 
-                alt="drawing" 
-                className="w-full h-full object-contain" 
+              <img
+                src={drawings[pageIndex]}
+                alt="drawing"
+                className="w-full h-full object-contain"
               />
             </div>
           )}
@@ -443,7 +480,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
               height={PAGE_H}
               initialDataUrl={drawings?.[pageIndex]}
               onSave={(dataUrl) => onDrawingSave?.(pageIndex, dataUrl)}
-              onClose={() => onStopDrawing?.(() => {})}
+              onClose={() => onStopDrawing?.(() => { })}
             />
           )}
 

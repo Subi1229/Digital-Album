@@ -17,19 +17,19 @@ interface MoodboardTextLayerProps {
 const FONT_OPTIONS = [
   // Cursive / script
   { label: "Dancing Script", value: "'Dancing Script', cursive" },
-  { label: "Great Vibes",    value: "'Great Vibes', cursive" },
-  { label: "Sacramento",     value: "'Sacramento', cursive" },
-  { label: "Pinyon Script",  value: "'Pinyon Script', cursive" },
-  { label: "Satisfy",        value: "'Satisfy', cursive" },
-  { label: "Pacifico",       value: "'Pacifico', cursive" },
-  { label: "Caveat",         value: "'Caveat', cursive" },
-  { label: "Courgette",      value: "'Courgette', cursive" },
+  { label: "Great Vibes", value: "'Great Vibes', cursive" },
+  { label: "Sacramento", value: "'Sacramento', cursive" },
+  { label: "Pinyon Script", value: "'Pinyon Script', cursive" },
+  { label: "Satisfy", value: "'Satisfy', cursive" },
+  { label: "Pacifico", value: "'Pacifico', cursive" },
+  { label: "Caveat", value: "'Caveat', cursive" },
+  { label: "Courgette", value: "'Courgette', cursive" },
   { label: "Kaushan Script", value: "'Kaushan Script', cursive" },
-  { label: "Lobster",        value: "'Lobster', cursive" },
+  { label: "Lobster", value: "'Lobster', cursive" },
   // Classic
-  { label: "Serif",          value: "Georgia, serif" },
-  { label: "Sans",           value: "Arial, sans-serif" },
-  { label: "Mono",           value: "'Courier New', monospace" },
+  { label: "Serif", value: "Georgia, serif" },
+  { label: "Sans", value: "Arial, sans-serif" },
+  { label: "Mono", value: "'Courier New', monospace" },
 ];
 
 export default function MoodboardTextLayer({
@@ -173,7 +173,7 @@ function SmoothColorPicker({
         color={localColor}
         onChange={handleColorChange}
       />
-      
+
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         {typeof window !== "undefined" && "EyeDropper" in window && (
           <button
@@ -307,20 +307,20 @@ function MoodboardTextItem({
     const el = containerRef.current;
     if (!el) return { x: sx, y: sy };
     const rect = el.getBoundingClientRect();
-    const scaleFlat = rect.width  / containerWidth;
-    const scaleRot  = rect.width  / containerHeight;
+    const scaleFlat = rect.width / containerWidth;
+    const scaleRot = rect.width / containerHeight;
     const isRotated =
-      Math.abs(rect.height - containerWidth  * scaleRot ) <
+      Math.abs(rect.height - containerWidth * scaleRot) <
       Math.abs(rect.height - containerHeight * scaleFlat);
     if (!isRotated) {
       const scale = rect.width / containerWidth;
       return { x: (sx - rect.left) / scale, y: (sy - rect.top) / scale };
     }
-    const scale  = rect.width / containerHeight;
-    const rectCx = rect.left + rect.width  / 2;
-    const rectCy = rect.top  + rect.height / 2;
+    const scale = rect.width / containerHeight;
+    const rectCx = rect.left + rect.width / 2;
+    const rectCy = rect.top + rect.height / 2;
     return {
-      x: containerWidth  / 2 - (sy - rectCy) / scale,
+      x: containerWidth / 2 - (sy - rectCy) / scale,
       y: containerHeight / 2 + (sx - rectCx) / scale,
     };
   }, [containerRef, containerWidth, containerHeight]);

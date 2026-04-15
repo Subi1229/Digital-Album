@@ -4,6 +4,9 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import AlbumPage, { PAGE_W, PAGE_H, GRID_X, GRID_Y, INNER_PAD_X, INNER_PAD_Y, getSlotDefs } from "./AlbumPage";
+import MoodboardImageLayer from "./MoodboardImageLayer";
+import MoodboardTextLayer from "./MoodboardTextLayer";
+import StickerLayer from "./StickerLayer";
 import { Sticker, MoodboardImage, MoodboardText } from "@/lib/types";
 
 interface ShareModalProps {
@@ -16,7 +19,7 @@ interface ShareModalProps {
   moodboardTexts: MoodboardText[];
   drawings: Record<number, string>;
   bgImageUrl: string | null;
-  getPageTemplateId: (pageIdx: number) => 1 | 2 | 3 | 4 | 5;
+  getPageTemplateId: (pageIdx: number) => 1 | 2 | 3 | 4 | 5 | 6;
   getPageImages: (pageIdx: number) => Record<number, string>;
   onClose: () => void;
 }
@@ -153,7 +156,8 @@ async function overdrawStickers(
   canvas: HTMLCanvasElement,
   stickers: import("@/lib/types").Sticker[],
   pageIndex: number,
-  scale: number
+  scale: number,
+  containerW: number = PAGE_W
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -167,26 +171,26 @@ async function overdrawStickers(
         if (img.naturalWidth === 0 || img.naturalHeight === 0) { resolve(); return; }
         
         const sScale = s.scale ?? 1;
-        const containerW = s.width * sScale;
-        const containerH = s.height * sScale;
+        const stickerW = s.width * sScale;
+        const stickerH = s.height * sScale;
 
         // Proportional scaling (contain): fit the image inside the container without stretching
         const imgAspect = img.naturalWidth / img.naturalHeight;
         const containerAspect = s.width / s.height;
-        
+
         let drawW, drawH;
         if (imgAspect > containerAspect) {
           // Image is wider than container aspect — fix width, scale height
-          drawW = containerW;
-          drawH = containerW / imgAspect;
+          drawW = stickerW;
+          drawH = stickerW / imgAspect;
         } else {
           // Image is taller than container aspect — fix height, scale width
-          drawH = containerH;
-          drawW = containerH * imgAspect;
+          drawH = stickerH;
+          drawW = stickerH * imgAspect;
         }
 
         // Center of the sticker in page coords
-        const cx = (s.x * PAGE_W + s.width / 2) * scale;
+        const cx = (s.x * containerW + s.width / 2) * scale;
         const cy = (s.y * PAGE_H + s.height / 2) * scale;
         const dw = drawW * scale;
         const dh = drawH * scale;
@@ -211,6 +215,59 @@ async function overdrawStickers(
 
 // Template 5 full-page export: correct z-order + high-quality images
 // Pipeline: white base → moodboard images (high-q) → stickers (high-q) → transparent DOM overlay (texts + drawings only)
+async function exportTemplate6Spread(
+  el: HTMLElement,
+  html2canvasFn: (el: HTMLElement, opts: object) => Promise<HTMLCanvasElement>,
+  moodboardImages: import("@/lib/types").MoodboardImage[],
+  stickers: import("@/lib/types").Sticker[],
+  albumId: string,
+  pageIndex: number,
+  scale: number
+): Promise<HTMLCanvasElement> {
+  const W = Math.round(PAGE_W * 2 * scale);
+  const H = Math.round(PAGE_H * scale);
+
+  const finalCanvas = document.createElement("canvas");
+  finalCanvas.width = W;
+  finalCanvas.height = H;
+  const finalCtx = finalCanvas.getContext("2d")!;
+  finalCtx.fillStyle = "#ffffff";
+  finalCtx.fillRect(0, 0, W, H);
+
+  await overdrawMoodboardImages(finalCanvas, moodboardImages, albumId, pageIndex, scale);
+  await overdrawStickers(finalCanvas, stickers, pageIndex, scale, PAGE_W * 2);
+
+  const stickerDivs = Array.from(el.querySelectorAll("[data-sticker]")) as HTMLElement[];
+  const mbDivs = Array.from(el.querySelectorAll("[data-mbimage]")) as HTMLElement[];
+  const savedElBg = el.style.background;
+  const savedStickerVis = stickerDivs.map((d) => d.style.visibility);
+  const savedMbVis = mbDivs.map((d) => d.style.visibility);
+  el.style.background = "transparent";
+  stickerDivs.forEach((d) => { d.style.visibility = "hidden"; });
+  mbDivs.forEach((d) => { d.style.visibility = "hidden"; });
+
+  let overlayCanvas: HTMLCanvasElement | null = null;
+  try {
+    overlayCanvas = await html2canvasFn(el, {
+      scale,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: null,
+      logging: false,
+      imageTimeout: 20000,
+      windowWidth: el.scrollWidth,
+      windowHeight: el.scrollHeight,
+    });
+  } finally {
+    el.style.background = savedElBg;
+    stickerDivs.forEach((d, i) => { d.style.visibility = savedStickerVis[i]; });
+    mbDivs.forEach((d, i) => { d.style.visibility = savedMbVis[i]; });
+  }
+
+  if (overlayCanvas) finalCtx.drawImage(overlayCanvas, 0, 0);
+  return finalCanvas;
+}
+
 async function exportTemplate5Page(
   el: HTMLElement,
   html2canvasFn: (el: HTMLElement, opts: object) => Promise<HTMLCanvasElement>,
@@ -285,7 +342,7 @@ async function exportTemplate5Page(
 async function overdrawSlotImages(
   canvas: HTMLCanvasElement,
   pageImages: Record<number, string>,
-  templateId: 1 | 2 | 3 | 4 | 5,
+  templateId: 1 | 2 | 3 | 4 | 5 | 6,
   isLeft: boolean,
   scale: number
 ) {
@@ -325,6 +382,10 @@ export default function ShareModal({
   getPageImages,
   onClose,
 }: ShareModalProps) {
+  // For template 6: export only even page indices (each = one full spread)
+  const exportPageIndices = Array.from({ length: totalPages }, (_, i) => i)
+    .filter(i => !(getPageTemplateId(i) === 6 && i % 2 === 1));
+
   const [mode, setMode] = useState<Mode>("choose");
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
@@ -375,7 +436,7 @@ export default function ShareModal({
     thumbCancelRef.current = false;
     // @ts-ignore
     const { default: html2canvas }: any = await import("html2canvas");
-    for (let i = 0; i < totalPages; i++) {
+    for (const i of exportPageIndices) {
       if (thumbCancelRef.current) break;
       if (!pageHasContent(i)) continue;           // skip empty pages
       const cacheKey = `${albumId}:${i}`;
@@ -412,7 +473,7 @@ export default function ShareModal({
     });
   };
 
-  const selectAll = () => setSelectedPages(new Set(Array.from({ length: totalPages }, (_, i) => i)));
+  const selectAll = () => setSelectedPages(new Set(exportPageIndices));
   const clearAll = () => setSelectedPages(new Set());
 
   const goToPages = () => {
@@ -434,11 +495,15 @@ export default function ShareModal({
       const el = hiddenRef.current?.querySelector(`[data-share-page="${pageIdx}"]`) as HTMLElement | null;
       if (!el) continue;
       await new Promise((r) => setTimeout(r, 80));
-      const isT5 = getPageTemplateId(pageIdx) === 5;
-      const PNG_SCALE = isT5 ? Math.max(6, Math.round(window.devicePixelRatio * 2)) : 6;
+      const tpl = getPageTemplateId(pageIdx);
+      const isT5 = tpl === 5;
+      const isT6 = tpl === 6;
+      const PNG_SCALE = (isT5 || isT6) ? Math.max(6, Math.round(window.devicePixelRatio * 2)) : 6;
       let canvas: HTMLCanvasElement;
       if (isT5) {
         canvas = await exportTemplate5Page(el, html2canvas, moodboardImages, stickers, albumId, pageIdx, PNG_SCALE);
+      } else if (isT6) {
+        canvas = await exportTemplate6Spread(el, html2canvas, moodboardImages, stickers, albumId, pageIdx, PNG_SCALE);
       } else {
         const stickerDivs = Array.from(el.querySelectorAll("[data-sticker]")) as HTMLElement[];
         const slotImages = Array.from(el.querySelectorAll('[data-slot="true"] img')) as HTMLElement[];
@@ -496,7 +561,8 @@ export default function ShareModal({
     const html2canvas = html2canvasMod.default;
     const jsPDF = jsPDFMod.default;
 
-    const pdf = new jsPDF({ orientation: "portrait", unit: "px", format: [PAGE_W, PAGE_H] });
+    const firstPageIsT6 = exportPageIndices.length > 0 && getPageTemplateId(exportPageIndices[0]) === 6;
+    const pdf = new jsPDF({ orientation: firstPageIsT6 ? "landscape" : "portrait", unit: "px", format: firstPageIsT6 ? [PAGE_W * 2, PAGE_H] : [PAGE_W, PAGE_H] });
 
     // Wait for 2 animation frames — guarantees DOM paint before we read/write progress
     const waitForPaint = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
@@ -507,11 +573,12 @@ export default function ShareModal({
     setExportProgress(0);
     await waitForPaint();
 
-    for (let i = 0; i < totalPages; i++) {
+    for (let loopIdx = 0; loopIdx < exportPageIndices.length; loopIdx++) {
+      const i = exportPageIndices[loopIdx];
       // Update status and snap bar to exact page-start % before async work
-      setProgress(`Capturing page ${i + 1} of ${totalPages}…`);
+      setProgress(`Capturing page ${loopIdx + 1} of ${exportPageIndices.length}…`);
       setExportTransitionDuration(0);
-      setExportProgress((i / totalPages) * 100);
+      setExportProgress((loopIdx / exportPageIndices.length) * 100);
       // Micro-delay: lets React flush state and browser repaint before blocking
       await new Promise((r) => setTimeout(r, 0));
 
@@ -522,13 +589,16 @@ export default function ShareModal({
       // Templates 1-4: scale 3 (old 363px images map ~1:1 to 369px slot — no upscale blur)
       // Template 5: devicePixelRatio*2 (min 4) — moodboard needs highest quality
       const templateId = getPageTemplateId(i);
-      const PDF_SCALE = templateId === 5
+      const isT6pdf = templateId === 6;
+      const PDF_SCALE = (templateId === 5 || isT6pdf)
         ? Math.max(6, Math.round(window.devicePixelRatio * 2))
         : 3;
       let pageCanvas: HTMLCanvasElement;
       if (templateId === 5) {
         // Template 5: proper z-order pipeline (images → overlay → stickers)
         pageCanvas = await exportTemplate5Page(el, html2canvas, moodboardImages, stickers, albumId, i, PDF_SCALE);
+      } else if (isT6pdf) {
+        pageCanvas = await exportTemplate6Spread(el, html2canvas, moodboardImages, stickers, albumId, i, PDF_SCALE);
       } else {
         const stickerDivs = Array.from(el.querySelectorAll("[data-sticker]")) as HTMLElement[];
         const slotImages = Array.from(el.querySelectorAll('[data-slot="true"] img')) as HTMLElement[];
@@ -561,17 +631,19 @@ export default function ShareModal({
         await overdrawSlotImages(pageCanvas, getPageImages(i), templateId, i % 2 === 0, PDF_SCALE);
         await overdrawStickers(pageCanvas, stickers, i, PDF_SCALE);
       }
-      if (i > 0) pdf.addPage([PAGE_W, PAGE_H], "portrait");
-      const pdfImgData = templateId === 5
+      if (loopIdx > 0) pdf.addPage(isT6pdf ? [PAGE_W * 2, PAGE_H] : [PAGE_W, PAGE_H], isT6pdf ? "landscape" : "portrait");
+      else if (isT6pdf) { /* first page — reinit pdf with correct size */ }
+      const pdfImgData = (templateId === 5 || isT6pdf)
         ? pageCanvas.toDataURL("image/png", 1.0)
         : pageCanvas.toDataURL("image/jpeg", 0.95);
-      const pdfImgFmt = templateId === 5 ? "PNG" : "JPEG";
-      pdf.addImage(pdfImgData, pdfImgFmt, 0, 0, PAGE_W, PAGE_H, `pg-${i}`, "FAST");
+      const pdfImgFmt = (templateId === 5 || isT6pdf) ? "PNG" : "JPEG";
+      const pdfW = isT6pdf ? PAGE_W * 2 : PAGE_W;
+      pdf.addImage(pdfImgData, pdfImgFmt, 0, 0, pdfW, PAGE_H, `pg-${i}`, "FAST");
 
-      // Page done — snap bar to exact completion %: page 10 of 20 = 50%, page 20 of 20 = 100%
+      // Page done — snap bar to exact completion %
       setExportTransitionDuration(200);
       setExportTransitionEase("ease-out");
-      setExportProgress(((i + 1) / totalPages) * 100);
+      setExportProgress(((loopIdx + 1) / exportPageIndices.length) * 100);
       await waitForPaint();
     }
 
@@ -592,15 +664,39 @@ export default function ShareModal({
       ref={hiddenRef}
       style={{ position: "fixed", top: 0, left: "-99999px", width: PAGE_W, pointerEvents: "none", zIndex: 9999, overflow: "visible" }}
     >
-      {Array.from({ length: totalPages }, (_, pageIdx) => (
+      {exportPageIndices.map((pageIdx) => {
+        const isT6spread = getPageTemplateId(pageIdx) === 6;
+        const spreadW = isT6spread ? PAGE_W * 2 : PAGE_W;
+        return (
         <div
           key={pageIdx}
           data-share-page={pageIdx}
-          style={{ width: PAGE_W, height: PAGE_H, position: "relative", overflow: "hidden", background: "#ffffff", marginBottom: 4 }}
+          style={{ width: spreadW, height: PAGE_H, position: "relative", overflow: "hidden", background: "#ffffff", marginBottom: 4 }}
         >
           {bgImageUrl && (
             <img src={bgImageUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 }} crossOrigin="anonymous" />
           )}
+          {isT6spread ? (
+            <div style={{ position: "absolute", inset: 0, zIndex: 1 }}>
+              <div style={{ position: "absolute", inset: 0, zIndex: 45, pointerEvents: "none" }}>
+                <MoodboardImageLayer albumId={albumId} images={moodboardImages} pageIndex={pageIdx}
+                  containerWidth={PAGE_W * 2} containerHeight={PAGE_H} onImagesChange={() => {}} forExport={true} />
+              </div>
+              <div style={{ position: "absolute", inset: 0, zIndex: 55, pointerEvents: "none" }}>
+                <MoodboardTextLayer albumId={albumId} pageIndex={pageIdx} texts={moodboardTexts}
+                  containerWidth={PAGE_W * 2} containerHeight={PAGE_H} onTextsChange={() => {}} />
+              </div>
+              {drawings[pageIdx] && (
+                <div style={{ position: "absolute", inset: 0, zIndex: 58, pointerEvents: "none" }}>
+                  <img src={drawings[pageIdx]} alt="drawing" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                </div>
+              )}
+              <div style={{ position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none" }}>
+                <StickerLayer stickers={stickers} pageIndex={pageIdx}
+                  containerWidth={PAGE_W * 2} containerHeight={PAGE_H} onStickersChange={() => {}} forExport={true} />
+              </div>
+            </div>
+          ) : (
           <div style={{ position: "absolute", inset: 0, zIndex: 1 }}>
             <AlbumPage
               albumId={albumId}
@@ -628,8 +724,10 @@ export default function ShareModal({
               forExport={true}
             />
           </div>
+          )}
         </div>
-      ))}
+        );
+      })}
     </div>,
     document.body
   ) : null;
@@ -721,16 +819,17 @@ export default function ShareModal({
                 </div>
               </div>
               <p className="text-xs font-sans" style={{ color: "#334a52" }}>Select pages to download ({selectedPages.size} selected)</p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                {Array.from({ length: totalPages }, (_, i) => {
+              <div style={{ display: "grid", gridTemplateColumns: exportPageIndices.some(i => getPageTemplateId(i) === 6) ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8 }}>
+                {exportPageIndices.map((i) => {
                   const selected = selectedPages.has(i);
+                  const isSpread = getPageTemplateId(i) === 6;
                   return (
                     <button
                       key={i}
                       onClick={() => togglePage(i)}
                       style={{
                         width: "100%",
-                        aspectRatio: `${PAGE_W}/${PAGE_H}`,
+                        aspectRatio: isSpread ? `${PAGE_W * 2}/${PAGE_H}` : `${PAGE_W}/${PAGE_H}`,
                         borderRadius: 8,
                         border: selected ? "2.5px solid #003242" : "1.5px solid rgba(0,0,0,0.12)",
                         padding: 0,
