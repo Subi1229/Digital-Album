@@ -67,10 +67,18 @@ export default function StickerLayer(props: StickerLayerProps) {
   // ── Peeling stickers: removed from parent state immediately, kept locally for animation ─
   const [peelingStickers, setPeelingStickers] = useState<Array<{ sticker: Sticker; originX: number; originY: number; peelScale: number; zIndex: number }>>([]);
 
+  // Stable refs so handlePeelStart never captures a stale closure
+  const stickersRef = useRef(stickers);
+  stickersRef.current = stickers;
+  const onStickersChangeRef = useRef(onStickersChange);
+  onStickersChangeRef.current = onStickersChange;
+  const zOrdersRef = useRef(zOrders);
+  zOrdersRef.current = zOrders;
+
   const handlePeelStart = useCallback((sticker: Sticker, originX: number, originY: number, peelScale: number) => {
-    onStickersChange(stickers.filter((s) => s.id !== sticker.id));
-    setPeelingStickers((prev) => [...prev, { sticker, originX, originY, peelScale, zIndex: 5 + (zOrders[sticker.id] ?? 0) }]);
-  }, [stickers, onStickersChange, zOrders]);
+    onStickersChangeRef.current(stickersRef.current.filter((s) => s.id !== sticker.id));
+    setPeelingStickers((prev) => [...prev, { sticker, originX, originY, peelScale, zIndex: 5 + (zOrdersRef.current[sticker.id] ?? 0) }]);
+  }, []);
 
   const handlePeelDone = useCallback((id: string) => {
     setPeelingStickers((prev) => prev.filter((p) => p.sticker.id !== id));
