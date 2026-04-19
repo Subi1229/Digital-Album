@@ -168,6 +168,7 @@ function MoodboardImageItem({
     rotation: image.rotation,
   });
   const [isTransforming, setIsTransforming] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   // Sync when the image prop changes from outside (e.g. initial load, page switch)
   useEffect(() => {
@@ -655,6 +656,8 @@ function MoodboardImageItem({
       onPointerMove={handleInteractionMove}
       onPointerUp={handleInteractionUp}
       onPointerCancel={handleInteractionUp}
+      onPointerEnter={(e) => { if (e.pointerType === "pen" || e.pointerType === "mouse") setIsHovered(true); }}
+      onPointerLeave={() => setIsHovered(false)}
     >
       {/* ── Photo ─────────────────────────────────────────────────────────── */}
       <div
@@ -715,7 +718,7 @@ function MoodboardImageItem({
       )}
 
       {/* ── Resize handles ────────────────────────────────────────────────── */}
-      {isSelected &&
+      {(isSelected || isHovered) &&
         resizeHandles.map(({ handle, style, cursor }) => (
           <div
             key={handle}
@@ -736,7 +739,7 @@ function MoodboardImageItem({
         ))}
 
       {/* ── Rotate zones (outside corners) ───────────────────────────────── */}
-      {isSelected &&
+      {(isSelected || isHovered) &&
         rotHandles.map(({ handle, style }) => (
           <div
             key={handle}
