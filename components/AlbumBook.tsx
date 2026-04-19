@@ -310,8 +310,8 @@ export default function AlbumBook() {
   useEffect(() => {
     // Lock to landscape in PWA so file picker and system UI also open in landscape
     const isPWACheck = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
-    if (isPWACheck && screen.orientation?.lock) {
-      screen.orientation.lock("landscape").catch(() => {});
+    if (isPWACheck && (screen.orientation as any)?.lock) {
+      (screen.orientation as any).lock("landscape").catch(() => {});
     }
 
     function compute() {
