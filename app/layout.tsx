@@ -3,16 +3,37 @@ import "./globals.css";
 import Script from "next/script";
 
 export const metadata: Metadata = {
-  title: "Digital Photo Album",
-  description: "A realistic digital photo album experience",
+  title: "Nestalgic- Digital Album",
+  description: "Create, customize and share beautiful digital albums and scrapbook memories online.",
+  keywords: ["digital album", "digital scrapbook", "photo album online", "memory album creator"],
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Photo Album",
+    title: "Nestalgic",
   },
   other: {
     "mobile-web-app-capable": "yes",
+  },
+  openGraph: {
+    title: "Nestalgic- Digital Album",
+    description: "Create, customize and share beautiful digital albums and scrapbook memories online.",
+    url: "https://nestalgic.vercel.app/",
+    images: [
+      {
+        url: "https://nestalgic.vercel.app/assets/preview.png",
+        width: 1200,
+        height: 630,
+        alt: "Nestalgic- Digital Album",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Nestalgic- Digital Album",
+    description: "Create, customize and share beautiful digital albums and scrapbook memories online.",
+    images: ["https://nestalgic.vercel.app/assets/preview.png"],
   },
 };
 
