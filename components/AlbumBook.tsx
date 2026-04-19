@@ -330,21 +330,26 @@ export default function AlbumBook() {
 
   // ————————————————————————————————————————————————————————————————————————————————
   useEffect(() => {
-    // Lock to landscape in PWA so file picker and system UI also open in landscape
-    const isPWACheck = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
-    if (isPWACheck && (screen.orientation as any)?.lock) {
-      (screen.orientation as any).lock("landscape").catch(() => {});
+    function isLandscapeNow(): boolean {
+      // screen.orientation.type is most reliable in PWA standalone
+      if (screen.orientation?.type) {
+        return screen.orientation.type.startsWith("landscape");
+      }
+      // fallback for iOS Safari
+      if (typeof window.orientation === "number") {
+        return Math.abs(window.orientation) === 90;
+      }
+      return window.innerWidth > window.innerHeight;
     }
 
     function compute() {
       const isTouch = navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
-      const isPWA = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
-      const isLandscape = window.innerWidth > window.innerHeight;
-      // PWA on touch device always uses rotated landscape layout
-      const mobile = isTouch && (window.innerWidth < 768 || (window.innerWidth < 1024 && isLandscape));
+      const landscape = isLandscapeNow();
+      // shortSide = portrait width regardless of current orientation
+      const shortSide = Math.min(window.innerWidth, window.innerHeight);
+      const mobile = isTouch && (shortSide < 768 || (shortSide < 1024 && landscape));
       setIsMobile(mobile);
       if (mobile) {
-        // Book is shown rotated 90° — PAGE_H becomes the visual width
         setBookScale(Math.min(1.6, (window.innerWidth - 24 - 64 - 8) / PAGE_H));
       } else {
         const availW = window.innerWidth - (44 + 8) * 2 - 16;
@@ -353,18 +358,24 @@ export default function AlbumBook() {
         setBookScale(Math.min(2.2, availW / bookW, availH / PAGE_H));
       }
     }
-    // Orientation change in PWA standalone fires after dimensions update — delay needed
+
     function onOrientationChange() {
-      setTimeout(compute, 100);
+      // Multiple delays to catch both fast and slow rotation updates
+      setTimeout(compute, 50);
+      setTimeout(compute, 200);
+      setTimeout(compute, 500);
     }
+
     compute();
     window.addEventListener("resize", compute);
     window.addEventListener("orientationchange", onOrientationChange);
     screen.orientation?.addEventListener("change", onOrientationChange);
+    visualViewport?.addEventListener("resize", compute);
     return () => {
       window.removeEventListener("resize", compute);
       window.removeEventListener("orientationchange", onOrientationChange);
       screen.orientation?.removeEventListener("change", onOrientationChange);
+      visualViewport?.removeEventListener("resize", compute);
     };
   }, []);
 
