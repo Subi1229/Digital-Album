@@ -1536,7 +1536,7 @@ export default function AlbumBook() {
                         <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1e1e1e", fontWeight: 500 }}>
                           Choose a Template
                         </p>
-                        <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-2">
+                        <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-2" style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
                           <div className="p-2">
                             <div className="grid grid-cols-2 gap-3">
                               {([1, 2, 3, 4, 5, 6] as (1 | 2 | 3 | 4 | 5 | 6)[]).map((tid) => (
@@ -1589,7 +1589,7 @@ export default function AlbumBook() {
                         <p className="text-center text-[12px] font-sans mt-1" style={{ color: "#334a52" }}>
                           Select 2–4 styles to mix across pages
                         </p>
-                        <div className="mt-4 flex-1 overflow-y-auto overflow-x-hidden pr-2">
+                        <div className="mt-4 flex-1 overflow-y-auto overflow-x-hidden pr-2" style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
                           <div className="p-2">
                             <div className="grid grid-cols-2 gap-3">
                               {([1, 2, 3, 4] as (1 | 2 | 3 | 4)[]).map((tid) => {
