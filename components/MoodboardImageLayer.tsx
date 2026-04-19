@@ -183,6 +183,7 @@ function MoodboardImageItem({
 
   const divRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<ActiveInteraction | null>(null);
+  const dragRef = useRef<{ startPtr: { x: number; y: number }; startImg: { x: number; y: number } } | null>(null);
 
   // Stable refs so event handlers never become stale
   const imageRef = useRef(image);
@@ -293,32 +294,14 @@ function MoodboardImageItem({
     (e: React.PointerEvent) => {
       stopNative(e);
       onSelect();
+      if (activeRef.current) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const ptr = screenToPage(e.clientX, e.clientY);
+      dragRef.current = { startPtr: ptr, startImg: { x: mx.get(), y: my.get() } };
+      onManipulateStartRef.current();
     },
-    [stopNative, onSelect],
+    [stopNative, onSelect, screenToPage, mx, my],
   );
-
-  const handleDragEnd = useCallback(() => {
-    const img = imageRef.current;
-    const lt = liveRef.current;
-    const rawX = mx.get();
-    const rawY = my.get();
-    const clX = Math.max(0, Math.min(containerWidth - lt.width, rawX));
-    const clY = Math.max(0, Math.min(containerHeight - lt.height, rawY));
-    mx.set(clX);
-    my.set(clY);
-    const updated = {
-      ...img,
-      x: clX,
-      y: clY,
-      width: lt.width,
-      height: lt.height,
-      rotation: lt.rotation,
-    };
-    startTransition(() => {
-      changeRef.current(allRef.current.map((i) => (i.id === img.id ? updated : i)));
-    });
-    onManipulateEndRef.current();
-  }, [mx, my, containerWidth, containerHeight]);
 
   // ── Resize / Rotate start ─────────────────────────────────────────────────
   const startInteraction = useCallback(
@@ -380,7 +363,15 @@ function MoodboardImageItem({
   const handleInteractionMove = useCallback(
     (e: React.PointerEvent) => {
       const act = activeRef.current;
-      if (!act) return;
+      if (!act) {
+        if (dragRef.current) {
+          const d = dragRef.current;
+          const ptr = screenToPage(e.clientX, e.clientY);
+          mx.set(d.startImg.x + ptr.x - d.startPtr.x);
+          my.set(d.startImg.y + ptr.y - d.startPtr.y);
+        }
+        return;
+      }
 
       const img = act.startImg;
       const rad = (img.rotation * Math.PI) / 180;
@@ -485,6 +476,20 @@ function MoodboardImageItem({
   // ── Resize / Rotate end ───────────────────────────────────────────────────
   const handleInteractionUp = useCallback(
     (_e: React.PointerEvent) => {
+      if (dragRef.current) {
+        dragRef.current = null;
+        const img = imageRef.current;
+        const lt = liveRef.current;
+        const clX = Math.max(0, Math.min(containerWidth - lt.width, mx.get()));
+        const clY = Math.max(0, Math.min(containerHeight - lt.height, my.get()));
+        mx.set(clX);
+        my.set(clY);
+        startTransition(() => {
+          changeRef.current(allRef.current.map((i) => (i.id === img.id ? { ...img, x: clX, y: clY, width: lt.width, height: lt.height, rotation: lt.rotation } : i)));
+        });
+        onManipulateEndRef.current();
+        return;
+      }
       const act = activeRef.current;
       if (!act) return;
       activeRef.current = null;
@@ -645,19 +650,11 @@ function MoodboardImageItem({
         overflow: "visible",
         boxSizing: "border-box",
       }}
-      drag={!isTransforming}
-      dragMomentum={false}
-      dragElastic={0}
-      // @ts-ignore — transformPagePoint removed from FM types but still works at runtime
-      transformPagePoint={(p: { x: number; y: number }) => screenToPage(p.x, p.y)}
       onPointerDown={handlePointerDown}
       onMouseDown={stopNative}
       onPointerMove={handleInteractionMove}
       onPointerUp={handleInteractionUp}
       onPointerCancel={handleInteractionUp}
-      onDragStart={onManipulateStart}
-      onDragEnd={handleDragEnd}
-      whileDrag={{ cursor: "grabbing", zIndex: (image.zIndex ?? 1) + 120 }}
     >
       {/* ── Photo ─────────────────────────────────────────────────────────── */}
       <div

@@ -15,7 +15,7 @@ interface CropModalProps {
 export default function CropModal({ pending, onDone, onCancel }: CropModalProps) {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768 && navigator.maxTouchPoints > 0);
+    const check = () => setIsMobile(window.innerWidth < 1024 && navigator.maxTouchPoints > 0);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);

@@ -309,16 +309,16 @@ export default function AlbumBook() {
   // ————————————————————————————————————————————————————————————————————————————————
   useEffect(() => {
     function compute() {
-      const mobile = window.innerWidth < 768;
+      const mobile = window.innerWidth < 1024 && navigator.maxTouchPoints > 0;
       setIsMobile(mobile);
       if (mobile) {
         // Book is shown rotated 90° — PAGE_H becomes the visual width
-        setBookScale(Math.min(1.2, (window.innerWidth - 40 - 64 - 16) / PAGE_H));
+        setBookScale(Math.min(1.6, (window.innerWidth - 24 - 64 - 8) / PAGE_H));
       } else {
-        const availW = window.innerWidth - (44 + 20) * 2 - 32;
-        const availH = window.innerHeight - 160;
+        const availW = window.innerWidth - (44 + 8) * 2 - 16;
+        const availH = window.innerHeight - 110;
         const bookW = PAGE_W * 2;
-        setBookScale(Math.min(1.3, availW / bookW, availH / PAGE_H));
+        setBookScale(Math.min(2.2, availW / bookW, availH / PAGE_H));
       }
     }
     compute();
@@ -697,7 +697,7 @@ export default function AlbumBook() {
   }
 
   return (
-    <div className="flex flex-col items-center w-full min-h-screen select-none"
+    <div className={`flex flex-col items-center w-full select-none ${isMobile ? "min-h-screen overflow-y-auto" : "h-screen overflow-hidden"}`}
       style={{
         background: bgImageUrl
           ? `url(${bgImageUrl}) center/cover no-repeat fixed`
@@ -743,9 +743,6 @@ export default function AlbumBook() {
 
             <div className="flex flex-col leading-tight ml-2">
               <span className="font-serif text-lg tracking-wide transition-colors" style={{ color: isBgDark ? "#fcfcd4" : "#1e1e1e", fontWeight: 500 }}>
-                My Photo Album
-              </span>
-              <span className="text-[12px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52" }}>
                 {activeAlbumName}
               </span>
             </div>
@@ -803,9 +800,6 @@ export default function AlbumBook() {
 
               <div className="flex flex-col leading-tight ml-2">
                 <span className="font-serif text-lg tracking-wide transition-colors" style={{ color: isBgDark ? "#fcfcd4" : "#1e1e1e", fontWeight: 500 }}>
-                  My Photo Album
-                </span>
-                <span className="text-[12px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52" }}>
                   {activeAlbumName}
                 </span>
               </div>
@@ -1325,7 +1319,7 @@ export default function AlbumBook() {
           ))}
         </motion.div>
       ) : (
-        <motion.div className="flex flex-col items-center gap-2.5 pb-7 pt-3"
+        <motion.div className="flex flex-col items-center gap-2.5 pb-7 pt-6"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
           <div className="flex items-center gap-1.5">
             {Array.from({ length: totalSpreads }).map((_, i) => (

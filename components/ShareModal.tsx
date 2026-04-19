@@ -412,7 +412,7 @@ export default function ShareModal({
 
   useEffect(() => {
     setMounted(true);
-    const check = () => setIsMobile(window.innerWidth < 768 && navigator.maxTouchPoints > 0);
+    const check = () => setIsMobile(window.innerWidth < 1024 && navigator.maxTouchPoints > 0);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
