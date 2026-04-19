@@ -22,6 +22,7 @@ interface ShareModalProps {
   getPageTemplateId: (pageIdx: number) => 1 | 2 | 3 | 4 | 5 | 6;
   getPageImages: (pageIdx: number) => Record<number, string>;
   onClose: () => void;
+  isMobile?: boolean;
 }
 
 type Mode = "choose" | "pages" | "album";
@@ -383,6 +384,7 @@ export default function ShareModal({
   getPageTemplateId,
   getPageImages,
   onClose,
+  isMobile: isMobileProp = false,
 }: ShareModalProps) {
   // For template 6: export only even page indices (each = one full spread)
   const exportPageIndices = Array.from({ length: totalPages }, (_, i) => i)
@@ -396,7 +398,7 @@ export default function ShareModal({
   const [exportTransitionEase, setExportTransitionEase] = useState("ease-out");
   const [progress, setProgress] = useState("");
   const [mounted, setMounted] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = isMobileProp;
   const [thumbnails, setThumbnails] = useState<Record<number, string>>(() => {
     // Initialise from cache so previous thumbnails show instantly
     const cached: Record<number, string> = {};
@@ -412,10 +414,6 @@ export default function ShareModal({
 
   useEffect(() => {
     setMounted(true);
-    const check = () => { const t = navigator.maxTouchPoints > 0; const l = window.innerWidth > window.innerHeight; setIsMobile(t && (window.innerWidth < 768 || (window.innerWidth < 1024 && l))); };
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
   }, []);
 
   // Returns true if a page has any user-added content worth previewing

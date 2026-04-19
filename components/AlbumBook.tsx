@@ -176,6 +176,8 @@ export default function AlbumBook() {
   const [isFlipping, setIsFlipping] = useState(false);
   const [isFlipAnimating, setIsFlipAnimating] = useState(false);
   const spreadCanvasRef = useRef<HTMLDivElement>(null);
+  const pickScrollRef = useRef<HTMLDivElement>(null);
+  const customScrollRef = useRef<HTMLDivElement>(null);
   const flipHalfTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [bookScale, setBookScale] = useState(1);
@@ -306,6 +308,26 @@ export default function AlbumBook() {
     });
   }, [isLoading, moodboardTexts]);
 
+  // Template modal scroll — non-passive touch listeners so scroll works on tablets
+  useEffect(() => {
+    function attachScroll(el: HTMLDivElement | null) {
+      if (!el) return () => {};
+      let lastX = 0;
+      const onStart = (e: TouchEvent) => { lastX = e.touches[0].clientX; };
+      const onMove = (e: TouchEvent) => {
+        e.preventDefault();
+        el.scrollTop += lastX - e.touches[0].clientX;
+        lastX = e.touches[0].clientX;
+      };
+      el.addEventListener("touchstart", onStart, { passive: true });
+      el.addEventListener("touchmove", onMove, { passive: false });
+      return () => { el.removeEventListener("touchstart", onStart); el.removeEventListener("touchmove", onMove); };
+    }
+    const c1 = attachScroll(pickScrollRef.current);
+    const c2 = attachScroll(customScrollRef.current);
+    return () => { c1(); c2(); };
+  });
+
   // ————————————————————————————————————————————————————————————————————————————————
   useEffect(() => {
     // Lock to landscape in PWA so file picker and system UI also open in landscape
@@ -319,7 +341,7 @@ export default function AlbumBook() {
       const isPWA = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
       const isLandscape = window.innerWidth > window.innerHeight;
       // PWA on touch device always uses rotated landscape layout
-      const mobile = isTouch && (isPWA || window.innerWidth < 768 || (window.innerWidth < 1024 && isLandscape));
+      const mobile = isTouch && (window.innerWidth < 768 || (window.innerWidth < 1024 && isLandscape));
       setIsMobile(mobile);
       if (mobile) {
         // Book is shown rotated 90° — PAGE_H becomes the visual width
@@ -1568,15 +1590,8 @@ export default function AlbumBook() {
                         <p className="text-center font-sans text-[17px] leading-[1.3] tracking-[-0.01em] sm:text-[20px]" style={{ color: "#1e1e1e", fontWeight: 500 }}>
                           Choose a Template
                         </p>
-                        <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-2"
+                        <div ref={pickScrollRef} className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-2"
                           style={{ touchAction: "none" } as React.CSSProperties}
-                          onTouchStart={(e) => { (e.currentTarget as any)._lx = e.touches[0].clientX; }}
-                          onTouchMove={(e) => {
-                            const el = e.currentTarget as HTMLDivElement;
-                            const lx = (el as any)._lx ?? e.touches[0].clientX;
-                            el.scrollTop += lx - e.touches[0].clientX;
-                            (el as any)._lx = e.touches[0].clientX;
-                          }}
                         >
                           <div className="p-2">
                             <div className="grid grid-cols-2 gap-3">
@@ -1630,15 +1645,8 @@ export default function AlbumBook() {
                         <p className="text-center text-[12px] font-sans mt-1" style={{ color: "#334a52" }}>
                           Select 2–4 styles to mix across pages
                         </p>
-                        <div className="mt-4 flex-1 overflow-y-auto overflow-x-hidden pr-2"
+                        <div ref={customScrollRef} className="mt-4 flex-1 overflow-y-auto overflow-x-hidden pr-2"
                           style={{ touchAction: "none" } as React.CSSProperties}
-                          onTouchStart={(e) => { (e.currentTarget as any)._lx = e.touches[0].clientX; }}
-                          onTouchMove={(e) => {
-                            const el = e.currentTarget as HTMLDivElement;
-                            const lx = (el as any)._lx ?? e.touches[0].clientX;
-                            el.scrollTop += lx - e.touches[0].clientX;
-                            (el as any)._lx = e.touches[0].clientX;
-                          }}
                         >
                           <div className="p-2">
                             <div className="grid grid-cols-2 gap-3">
@@ -1717,7 +1725,7 @@ export default function AlbumBook() {
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
 
       {/* â”€â”€ Modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <CropModal pending={pendingCrop} onDone={handleCropDone} onCancel={handleCropCancel} />
+      <CropModal pending={pendingCrop} onDone={handleCropDone} onCancel={handleCropCancel} isMobile={isMobile} />
 
       {/* ── Share Modal ── */}
       <AnimatePresence>
@@ -1739,6 +1747,7 @@ export default function AlbumBook() {
               getPageTemplateId={getPageTemplateId}
               getPageImages={getPageImages}
               onClose={() => setShareAlbumId(null)}
+              isMobile={isMobile}
             />
           );
         })()}
@@ -1752,6 +1761,7 @@ export default function AlbumBook() {
         libraryStickers={libraryStickers}
         onLibraryChange={handleLibraryChange}
         showWashiTab={getPageTemplateId(stickerPanelPage) === 5 || getPageTemplateId(stickerPanelPage) === 6}
+        isMobile={isMobile}
       />
     </div>
   );

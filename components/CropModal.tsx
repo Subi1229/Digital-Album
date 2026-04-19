@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import Cropper from "react-easy-crop";
 import { motion, AnimatePresence } from "framer-motion";
 import { CropArea, PendingCrop } from "@/lib/types";
@@ -10,16 +10,10 @@ interface CropModalProps {
   pending: PendingCrop | null;
   onDone: (dataUrl: string, pageIndex: number, slotIndex: number) => void;
   onCancel: () => void;
+  isMobile?: boolean;
 }
 
-export default function CropModal({ pending, onDone, onCancel }: CropModalProps) {
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const check = () => { const t = navigator.maxTouchPoints > 0; const l = window.innerWidth > window.innerHeight; setIsMobile(t && (window.innerWidth < 768 || (window.innerWidth < 1024 && l))); };
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
+export default function CropModal({ pending, onDone, onCancel, isMobile = false }: CropModalProps) {
 
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);

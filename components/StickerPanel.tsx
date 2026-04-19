@@ -32,6 +32,7 @@ interface StickerPanelProps {
   libraryStickers: LibrarySticker[];
   onLibraryChange: (ls: LibrarySticker[]) => void;
   showWashiTab?: boolean;
+  isMobile?: boolean;
 }
 
 type WashiDef = {
@@ -132,6 +133,7 @@ export default function StickerPanel({
   libraryStickers,
   onLibraryChange,
   showWashiTab = false,
+  isMobile: isMobileProp,
 }: StickerPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<ProcessingStep>("idle");
@@ -139,13 +141,18 @@ export default function StickerPanel({
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
   const [activeTab, setActiveTab] = useState<"stickers" | "washi">("stickers");
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobileInternal, setIsMobileInternal] = useState(false);
   useEffect(() => {
-    const check = () => { const t = navigator.maxTouchPoints > 0; const l = window.innerWidth > window.innerHeight; setIsMobile(t && (window.innerWidth < 768 || (window.innerWidth < 1024 && l))); };
+    if (isMobileProp !== undefined) return;
+    const check = () => { const t = navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches; const isPWA = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true; const l = window.innerWidth > window.innerHeight; setIsMobileInternal(t && (isPWA || window.innerWidth < 768 || (window.innerWidth < 1024 && l))); };
+    const onOrient = () => setTimeout(check, 100);
     check();
     window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
+    window.addEventListener("orientationchange", onOrient);
+    screen.orientation?.addEventListener("change", onOrient);
+    return () => { window.removeEventListener("resize", check); window.removeEventListener("orientationchange", onOrient); screen.orientation?.removeEventListener("change", onOrient); };
+  }, [isMobileProp]);
+  const isMobile = isMobileProp ?? isMobileInternal;
 
   useEffect(() => {
     if (!isOpen || !showWashiTab) setActiveTab("stickers");
