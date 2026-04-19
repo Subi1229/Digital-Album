@@ -309,7 +309,7 @@ export default function AlbumBook() {
   // ————————————————————————————————————————————————————————————————————————————————
   useEffect(() => {
     function compute() {
-      const isTouch = navigator.maxTouchPoints > 0;
+      const isTouch = navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
       const isLandscape = window.innerWidth > window.innerHeight;
       const mobile = isTouch && (window.innerWidth < 768 || (window.innerWidth < 1024 && isLandscape));
       setIsMobile(mobile);
@@ -323,9 +323,19 @@ export default function AlbumBook() {
         setBookScale(Math.min(2.2, availW / bookW, availH / PAGE_H));
       }
     }
+    // Orientation change in PWA standalone fires after dimensions update — delay needed
+    function onOrientationChange() {
+      setTimeout(compute, 100);
+    }
     compute();
     window.addEventListener("resize", compute);
-    return () => window.removeEventListener("resize", compute);
+    window.addEventListener("orientationchange", onOrientationChange);
+    screen.orientation?.addEventListener("change", onOrientationChange);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("orientationchange", onOrientationChange);
+      screen.orientation?.removeEventListener("change", onOrientationChange);
+    };
   }, []);
 
   useEffect(() => {
