@@ -309,7 +309,9 @@ export default function AlbumBook() {
   // ————————————————————————————————————————————————————————————————————————————————
   useEffect(() => {
     function compute() {
-      const mobile = window.innerWidth < 1024 && navigator.maxTouchPoints > 0;
+      const isTouch = navigator.maxTouchPoints > 0;
+      const isLandscape = window.innerWidth > window.innerHeight;
+      const mobile = isTouch && (window.innerWidth < 768 || (window.innerWidth < 1024 && isLandscape));
       setIsMobile(mobile);
       if (mobile) {
         // Book is shown rotated 90° — PAGE_H becomes the visual width
@@ -699,11 +701,29 @@ export default function AlbumBook() {
   return (
     <div className={`flex flex-col items-center w-full select-none ${isMobile ? "min-h-screen overflow-y-auto" : "h-screen overflow-hidden"}`}
       style={{
-        background: bgImageUrl
+        background: bgImageUrl && !isMobile
           ? `url(${bgImageUrl}) center/cover no-repeat fixed`
-          : "#ffffff",
-        imageRendering: "high-quality" as React.CSSProperties["imageRendering"]
+          : bgImageUrl ? "transparent" : "#ffffff",
+        imageRendering: "high-quality" as React.CSSProperties["imageRendering"],
+        position: "relative",
       }}>
+
+      {/* Rotated background for mobile/tablet landscape */}
+      {bgImageUrl && isMobile && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 0, overflow: "hidden", pointerEvents: "none" }}>
+          <div style={{
+            position: "absolute",
+            width: "100vh",
+            height: "100vw",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%) rotate(-90deg)",
+            backgroundImage: `url(${bgImageUrl})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }} />
+        </div>
+      )}
 
       <input type="file" accept="image/*" className="hidden" ref={bgInputRef} onChange={handleBgChange} />
 
@@ -1354,8 +1374,8 @@ export default function AlbumBook() {
       {/* â”€â”€ Onboarding tip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <AnimatePresence>
         {!isLoading && Object.keys(images).length === 0 && stickers.length === 0 && moodboardImages.length === 0 && (
-          <motion.div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-sans whitespace-nowrap"
-            style={{ background: "rgba(87,83,78,0.90)", color: "rgba(255,255,255,0.88)", backdropFilter: "blur(8px)", boxShadow: "0 4px 16px rgba(0,0,0,0.18)", zIndex: 40 }}
+          <motion.div className="fixed flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-sans whitespace-nowrap"
+            style={{ background: "rgba(87,83,78,0.90)", color: "rgba(255,255,255,0.88)", backdropFilter: "blur(8px)", boxShadow: "0 4px 16px rgba(0,0,0,0.18)", zIndex: 40, ...(isMobile ? { right: 24, top: "50%", transform: "translateY(-50%) rotate(-90deg)" } : { bottom: 24, left: "50%", transform: "translateX(-50%)" }) }}
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ delay: 0.6 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M12 5v14M5 12l7 7 7-7" />
