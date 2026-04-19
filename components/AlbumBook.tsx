@@ -330,24 +330,10 @@ export default function AlbumBook() {
 
   // ————————————————————————————————————————————————————————————————————————————————
   useEffect(() => {
-    function isLandscapeNow(): boolean {
-      // screen.orientation.type is most reliable in PWA standalone
-      if (screen.orientation?.type) {
-        return screen.orientation.type.startsWith("landscape");
-      }
-      // fallback for iOS Safari
-      if (typeof window.orientation === "number") {
-        return Math.abs(window.orientation) === 90;
-      }
-      return window.innerWidth > window.innerHeight;
-    }
-
     function compute() {
       const isTouch = navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
-      const landscape = isLandscapeNow();
-      // shortSide = portrait width regardless of current orientation
-      const shortSide = Math.min(window.innerWidth, window.innerHeight);
-      const mobile = isTouch && (shortSide < 768 || (shortSide < 1024 && landscape));
+      const isLandscape = window.innerWidth > window.innerHeight;
+      const mobile = isTouch && (window.innerWidth < 768 || (window.innerWidth < 1024 && isLandscape));
       setIsMobile(mobile);
       if (mobile) {
         setBookScale(Math.min(1.6, (window.innerWidth - 24 - 64 - 8) / PAGE_H));
@@ -360,7 +346,6 @@ export default function AlbumBook() {
     }
 
     function onOrientationChange() {
-      // Multiple delays to catch both fast and slow rotation updates
       setTimeout(compute, 50);
       setTimeout(compute, 200);
       setTimeout(compute, 500);
