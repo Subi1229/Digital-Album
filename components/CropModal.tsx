@@ -95,7 +95,7 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
           <motion.div
             className="relative z-10 flex flex-col rounded-3xl overflow-hidden shadow-2xl"
             style={{
-              width: 320,
+              width: isMobile ? 300 : 320,
               background: "rgba(15,15,15,0.95)",
               border: "1px solid rgba(255,255,255,0.08)",
             }}
@@ -105,14 +105,12 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
             transition={{ type: "spring", stiffness: 300, damping: 28 }}
           >
             {/* Header */}
-            <div className="px-6 pt-5 pb-3 flex items-center justify-between">
+            <div className={`px-5 flex items-center justify-between ${isMobile ? "pt-3 pb-2" : "pt-5 pb-3"}`}>
               <div>
                 <h2 className="text-white font-semibold text-base tracking-tight">
                   Crop Photo
                 </h2>
-                <p className="text-white/40 text-xs mt-0.5">
-                  Drag & zoom to frame your shot
-                </p>
+                {!isMobile && <p className="text-white/40 text-xs mt-0.5">Drag & zoom to frame your shot</p>}
               </div>
               <button
                 onClick={onCancel}
@@ -126,9 +124,9 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
 
             {/* Crop Area */}
             <div
-              className="relative mx-5 rounded-2xl overflow-visible"
+              className="relative mx-4 rounded-2xl overflow-visible"
               style={{
-                height: 310,
+                height: isMobile ? 190 : 310,
                 background: "#111",
                 border: "1px solid rgba(255,255,255,0.06)",
               }}
@@ -159,7 +157,7 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
             </div>
 
             {/* Zoom Slider */}
-            <div className="px-6 pt-4 pb-2">
+            <div className={`px-5 ${isMobile ? "pt-2 pb-1" : "pt-4 pb-2"}`}>
               <div className="flex items-center gap-3">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-white/30 shrink-0">
                   <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.5"/>
@@ -185,7 +183,7 @@ export default function CropModal({ pending, onDone, onCancel }: CropModalProps)
             </div>
 
             {/* Actions */}
-            <div className="px-5 pb-5 pt-3 flex gap-2.5">
+            <div className={`px-4 flex gap-2 ${isMobile ? "pb-3 pt-2" : "pb-5 pt-3"}`}>
               <button
                 onClick={onCancel}
                 className="flex-1 h-10 rounded-xl text-white/60 text-sm font-medium transition-all hover:bg-white/8 hover:text-white/80"

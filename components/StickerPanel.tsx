@@ -179,6 +179,9 @@ export default function StickerPanel({
         }
 
         // 2. Create a placed-sticker instance on the current page
+        const pageMaxZ = allStickers
+          .filter((s) => s.pageIndex === currentPage)
+          .reduce((max, s) => Math.max(max, s.zIndex ?? 0), 0);
         const newSticker: Sticker = {
           id: uuidv4(),
           pageIndex: currentPage,
@@ -188,6 +191,7 @@ export default function StickerPanel({
           width: 96,
           height: 96,
           rotation: Math.random() * 16 - 8,
+          zIndex: pageMaxZ + 1,
         };
 
         await saveSticker(newSticker);
@@ -204,6 +208,9 @@ export default function StickerPanel({
         try {
           await new Promise((r) => setTimeout(r, 200));
           const { v4: uuidv4 } = await import("uuid");
+          const retryMaxZ = allStickers
+            .filter((s) => s.pageIndex === currentPage)
+            .reduce((max, s) => Math.max(max, s.zIndex ?? 0), 0);
           const retry: Sticker = {
             id: uuidv4(),
             pageIndex: currentPage,
@@ -213,6 +220,7 @@ export default function StickerPanel({
             width: 96,
             height: 96,
             rotation: 0,
+            zIndex: retryMaxZ + 1,
           };
           await saveSticker(retry);
           onStickersChange([...allStickers, retry]);

@@ -34,15 +34,59 @@ export default function StickerLayer(props: StickerLayerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // ── Active manipulation — blocks pointer events on all other stickers ─────
   const [activeId, setActiveId] = useState<string | null>(null);
-  // ── Z-order map: bumped on each selection so last-selected is always on top ─
-  const [zOrders, setZOrders] = useState<Record<string, number>>({});
-  const zCounterRef = useRef(0);
+  // ── Z-order map: seeded from persisted zIndex, bumped on each selection ─────
+  const [zOrders, setZOrders] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {};
+    stickers.filter((s) => s.pageIndex === pageIndex).forEach((s) => {
+      init[s.id] = s.zIndex ?? 0;
+    });
+    return init;
+  });
+  const zCounterRef = useRef(
+    stickers.filter((s) => s.pageIndex === pageIndex).reduce((max, s) => Math.max(max, s.zIndex ?? 0), 0)
+  );
+
+  // Keep zOrders in sync with persisted zIndex from props (covers initial load,
+  // new stickers, and updates propagated from the SpreadCanvas to AlbumPage)
+  useEffect(() => {
+    setZOrders((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      stickers.filter((s) => s.pageIndex === pageIndex).forEach((s) => {
+        const persisted = s.zIndex ?? 0;
+        if ((prev[s.id] ?? -1) < persisted) {
+          next[s.id] = persisted;
+          if (persisted > zCounterRef.current) zCounterRef.current = persisted;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [stickers, pageIndex]);
+
+  // ── Peeling stickers: removed from parent state immediately, kept locally for animation ─
+  const [peelingStickers, setPeelingStickers] = useState<Array<{ sticker: Sticker; originX: number; originY: number; peelScale: number; zIndex: number }>>([]);
+
+  const handlePeelStart = useCallback((sticker: Sticker, originX: number, originY: number, peelScale: number) => {
+    onStickersChange(stickers.filter((s) => s.id !== sticker.id));
+    setPeelingStickers((prev) => [...prev, { sticker, originX, originY, peelScale, zIndex: 5 + (zOrders[sticker.id] ?? 0) }]);
+  }, [stickers, onStickersChange, zOrders]);
+
+  const handlePeelDone = useCallback((id: string) => {
+    setPeelingStickers((prev) => prev.filter((p) => p.sticker.id !== id));
+  }, []);
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
     zCounterRef.current += 1;
-    setZOrders((prev) => ({ ...prev, [id]: zCounterRef.current }));
-  }, []);
+    const newZ = zCounterRef.current;
+    setZOrders((prev) => ({ ...prev, [id]: newZ }));
+    // Persist zIndex so layer order survives page turns and export
+    const updated = stickers.map((s) => s.id === id ? { ...s, zIndex: newZ } : s);
+    onStickersChange(updated);
+    const target = updated.find((s) => s.id === id);
+    if (target) saveSticker(target).catch(() => {});
+  }, [stickers, onStickersChange]);
 
   // Deselect on any tap that lands outside a sticker element.
   // Uses document capture phase (fires before any element handler) and checks
@@ -60,7 +104,7 @@ export default function StickerLayer(props: StickerLayerProps) {
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [selectedId]);
 
-  if (pageStickers.length === 0) return null;
+  if (pageStickers.length === 0 && peelingStickers.length === 0) return null;
 
   return (
     <div
@@ -90,6 +134,18 @@ export default function StickerLayer(props: StickerLayerProps) {
             onManipulateStart={() => startTransition(() => setActiveId(sticker.id))}
             onManipulateEnd={() => startTransition(() => setActiveId(null))}
             forExport={forExport}
+            onPeelStart={handlePeelStart}
+          />
+        ))}
+        {peelingStickers.map(({ sticker, originX, originY, peelScale, zIndex }) => (
+          <PeelAnimation
+            key={sticker.id}
+            sticker={sticker}
+            originX={originX}
+            originY={originY}
+            peelScale={peelScale}
+            zIndex={zIndex}
+            onDone={() => handlePeelDone(sticker.id)}
           />
         ))}
       </AnimatePresence>
@@ -118,10 +174,11 @@ interface PeelAnimationProps {
   originY: number;
   /** Visual scale at the moment the peel was triggered — keeps size consistent. */
   peelScale?: number;
+  zIndex?: number;
   onDone: () => void;
 }
 
-function PeelAnimation({ sticker, originX, originY, peelScale = 1, onDone }: PeelAnimationProps) {
+function PeelAnimation({ sticker, originX, originY, peelScale = 1, zIndex = 20, onDone }: PeelAnimationProps) {
   const stuckRef = useRef<HTMLDivElement>(null);
   const flapRef = useRef<HTMLDivElement>(null);
   const frontRef = useRef<HTMLDivElement>(null);
@@ -223,7 +280,7 @@ function PeelAnimation({ sticker, originX, originY, peelScale = 1, onDone }: Pee
         // the browser synthesises after touchend lands here and goes no further,
         // preventing it from reaching the ImageSlot underneath.
         pointerEvents: "auto",
-        zIndex: 20,
+        zIndex,
       }}
     >
       {/* Stuck layer — part still adhered; mask retreats toward top-left */}
@@ -281,6 +338,7 @@ interface DraggableStickerProps {
   onManipulateStart: () => void;
   onManipulateEnd: () => void;
   forExport?: boolean;
+  onPeelStart: (sticker: Sticker, originX: number, originY: number, peelScale: number) => void;
 }
 
 function DraggableSticker({
@@ -297,6 +355,7 @@ function DraggableSticker({
   onManipulateStart,
   onManipulateEnd,
   forExport = false,
+  onPeelStart,
 }: DraggableStickerProps) {
   // Tight content bounds in element-px space (non-transparent pixel area of the PNG)
   const [contentBounds, setContentBounds] = useState<{ left: number; top: number; bw: number; bh: number } | null>(null);
@@ -307,7 +366,6 @@ function DraggableSticker({
   // Framer Motion's x/y/rotate without interfering with whileDrag.
   const scaleMotion = useMotionValue(sticker.scale ?? 1);
 
-  const [isPeeling, setIsPeeling] = useState(false);
   const peelOrigin = useRef({ x: 0, y: 0 });
   const peelScale = useRef(1);   // scale captured at peel time
   const lastTapRef = useRef(0);
@@ -354,6 +412,7 @@ function DraggableSticker({
   stickerRef.current = sticker;
   allStickersR.current = allStickers;
   onChangeRef.current = onStickersChange;
+
 
   // ── Pinch-to-resize + two-finger rotate (mobile) ────────────────────────────
   const pinchRef = useRef<{ dist: number; angle0: number; scale: number; rot0: number } | null>(null);
@@ -481,13 +540,6 @@ function DraggableSticker({
     onManipulateEnd();
   }, [x, y, sticker, containerWidth, containerHeight, allStickers, onStickersChange, scaleMotion, onManipulateEnd]);
 
-  const handleDelete = useCallback(async () => {
-    // Library items are persisted in the dedicated library store.
-    // Deleting a placed sticker should only remove this placed instance.
-    onStickersChange(allStickers.filter((s) => s.id !== sticker.id));
-    await deleteSticker(sticker.id);
-  }, [sticker.id, allStickers, onStickersChange]);
-
   // ── Corner resize handlers (desktop) ────────────────────────────────────────
   // Invisible corner zones capture pointer events so FM drag never starts —
   // stopImmediatePropagation on the native event prevents Framer Motion from
@@ -504,7 +556,7 @@ function DraggableSticker({
       peelOrigin.current = { x: x.get(), y: y.get() };
       peelScale.current = scaleMotion.get();
       deleteSticker(sticker.id);
-      setIsPeeling(true);
+      onPeelStart(stickerRef.current, peelOrigin.current.x, peelOrigin.current.y, peelScale.current);
       return;
     }
     lastTapRef.current = now;
@@ -611,7 +663,7 @@ function DraggableSticker({
   }, [onSelect]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (isPeeling) return;
+    if (false) return; // isPeeling removed; peel is now handled in StickerLayer
 
     // ── Mobile: skip mouse-compat pointer events ─────────────────────────
     // After touchend, mobile browsers synthesise mousedown/mouseup (pointerType
@@ -634,26 +686,11 @@ function DraggableSticker({
       // PeelAnimation starts at the exact same visual state — no size jump.
       peelOrigin.current = { x: x.get(), y: y.get() };
       peelScale.current = scaleMotion.get();
-      // Delete from IDB immediately so a refresh during the peel animation
-      // does not restore the sticker. React state is kept alive for the animation.
       deleteSticker(sticker.id);
-      setIsPeeling(true);
+      onPeelStart(stickerRef.current, peelOrigin.current.x, peelOrigin.current.y, peelScale.current);
     }
     lastTapRef.current = now;
-  }, [isPeeling, x, y, scaleMotion]);
-
-  // Switch to the peel branch on double-tap
-  if (isPeeling) {
-    return (
-      <PeelAnimation
-        sticker={sticker}
-        originX={peelOrigin.current.x}
-        originY={peelOrigin.current.y}
-        peelScale={peelScale.current}
-        onDone={handleDelete}
-      />
-    );
-  }
+  }, [x, y, scaleMotion, onPeelStart]);
 
   // Shared props for all four invisible corner resize zones
   const cornerZoneProps = {

@@ -161,7 +161,9 @@ async function overdrawStickers(
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  const pageStickers = stickers.filter((s) => s.pageIndex === pageIndex);
+  const pageStickers = stickers
+    .filter((s) => s.pageIndex === pageIndex)
+    .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   for (const s of pageStickers) {

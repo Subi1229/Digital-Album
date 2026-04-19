@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, useCallback, useEffect, useMemo, startTransition } from "react";
 import HTMLFlipBook from "react-pageflip";
+import SplashScreen from "@/components/SplashScreen";
 import { motion, AnimatePresence } from "framer-motion";
 import AlbumPage, { PAGE_W, PAGE_H, SLOT_ASPECT } from "./AlbumPage";
 import MoodboardImageLayer from "./MoodboardImageLayer";
@@ -692,17 +693,7 @@ export default function AlbumBook() {
 
   // ————————————————————————————————————————————————————————————————————————————————
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen"
-        style={{ background: "#ffffff" }}>
-        <motion.div className="flex flex-col items-center gap-4"
-          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-          <motion.div className="w-9 h-9 rounded-full border-[2.5px] border-stone-300 border-t-stone-500"
-            animate={{ rotate: 360 }} transition={{ duration: 0.85, repeat: Infinity, ease: "linear" }} />
-          <p className="text-sm font-medium font-sans tracking-wide" style={{ color: "#334a52" }}>Opening your album...</p>
-        </motion.div>
-      </div>
-    );
+    return <SplashScreen />;
   }
 
   return (
@@ -1061,13 +1052,7 @@ export default function AlbumBook() {
                 e.stopPropagation();
 
                 // Image slots always take priority — never hijack slot taps for flipping.
-                if ((e.target as Element).closest?.("[data-slot]")) {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const cx = e.clientX - rect.left;
-                  // Only suppress slots if they are in the active right-edge nav zones
-                  const inRightEdge = cx > rect.width * 0.7;
-                  if (!inRightEdge) return;
-                }
+                if ((e.target as Element).closest?.("[data-slot]")) return;
               }
 
               cornerTapRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
@@ -1536,11 +1521,13 @@ export default function AlbumBook() {
                 >
                   <div
                     style={{
-                      width: isMobile ? Math.min(400, window.innerHeight - 32) : 331,
-                      height: 480, flexShrink: 0,
+                      width: isMobile ? 360 : 331,
+                      height: isMobile ? 300 : 480,
+                      flexShrink: 0,
                       background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)",
                       boxShadow: "0 8px 32px rgba(51,74,82,0.12)",
-                      borderRadius: 16, padding: "20px 16px",
+                      borderRadius: 16,
+                      padding: isMobile ? "12px 10px" : "20px 16px",
                       display: "flex", flexDirection: "column",
                     }}
                   >

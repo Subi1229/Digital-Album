@@ -15,6 +15,7 @@ export interface Sticker {
   height: number;  // px
   rotation: number; // degrees
   scale?: number;   // visual scale multiplier (default 1.0) — stored so resize persists
+  zIndex?: number;  // persistent layer order — higher = in front
 }
 
 export interface LibrarySticker {
