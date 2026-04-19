@@ -310,8 +310,10 @@ export default function AlbumBook() {
   useEffect(() => {
     function compute() {
       const isTouch = navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
+      const isPWA = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
       const isLandscape = window.innerWidth > window.innerHeight;
-      const mobile = isTouch && (window.innerWidth < 768 || (window.innerWidth < 1024 && isLandscape));
+      // PWA on touch device always uses rotated landscape layout
+      const mobile = isTouch && (isPWA || window.innerWidth < 768 || (window.innerWidth < 1024 && isLandscape));
       setIsMobile(mobile);
       if (mobile) {
         // Book is shown rotated 90° — PAGE_H becomes the visual width
