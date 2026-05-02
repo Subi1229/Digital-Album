@@ -81,7 +81,7 @@ export default function ImageSlot({
         boxShadow: imageUrl
           ? "0 1px 4px rgba(0,0,0,0.10)"
           : "inset 0 1px 3px rgba(0,0,0,0.05)",
-        border: imageUrl ? "none" : "1.5px dashed #D6D3D1",
+        border: imageUrl ? "none" : "1.5px dashed #E7E5E4",
         flexShrink: 0,
       }}
       whileHover={

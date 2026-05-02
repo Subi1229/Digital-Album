@@ -715,6 +715,7 @@ function DraggableSticker({
       // taps from outside-taps so selection is never cleared mid-drag or on
       // a tap on the sticker body / resize handle.
       data-sticker={sticker.id}
+      data-selected={isSelected ? "true" : undefined}
       ref={divRef}
       style={{
         position: "absolute",
@@ -737,11 +738,12 @@ function DraggableSticker({
         zIndex: 5 + zOrder,
         boxSizing: "border-box",
         border: (() => {
-          if (!isSelected) return "2px dashed transparent";
+          if (!isSelected) return "1px solid transparent";
           const vis = Math.max(sticker.width, sticker.height) * (sticker.scale ?? 1);
-          return vis > 100 ? "2px dashed transparent" : "2px dashed #A4A4A4";
+          return vis > 100 ? "1px solid transparent" : "1px solid rgba(0,0,0,0.28)";
         })(),
-        transition: "border-color 0.15s ease",
+        borderRadius: 4,
+        transition: "border-color 0.18s ease",
       }}
       drag={!isGesturing && !isRotating && !isResizing}
       dragMomentum={false}
@@ -770,8 +772,8 @@ function DraggableSticker({
           top: contentBounds.top,
           width: contentBounds.bw,
           height: contentBounds.bh,
-          border: "2px dashed #A4A4A4",
-          borderRadius: 2,
+          border: "1px solid rgba(0,0,0,0.28)",
+          borderRadius: 4,
           pointerEvents: "none",
           boxSizing: "border-box",
         }} />

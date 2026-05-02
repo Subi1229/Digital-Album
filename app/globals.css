@@ -46,6 +46,7 @@ body {
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-family: 'IBM Plex Mono', monospace;
 }
 
 /* ── Typography ────────────────────────────────────────────── */
@@ -54,7 +55,11 @@ body {
 }
 
 .font-sans {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.font-mono {
+  font-family: 'IBM Plex Mono', monospace;
 }
 
 /* ── Album book container ──────────────────────────────────── */
@@ -185,6 +190,22 @@ input[type='range']::-moz-range-thumb {
   to {
     opacity: 1;
     transform: translateY(0) translateX(-50%);
+  }
+}
+
+/* ── Soft hover for stickers & washi (desktop only) ────────── */
+@media (hover: hover) and (pointer: fine) {
+  [data-sticker] {
+    transition: filter 800ms cubic-bezier(0.22, 0.61, 0.36, 1), transform 800ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+  [data-sticker]:not([data-selected="true"]):hover {
+    filter: brightness(1.04);
+  }
+  [data-sticker] img {
+    transition: transform 800ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+  [data-sticker]:not([data-selected="true"]):hover img {
+    transform: translateY(-2px);
   }
 }
 

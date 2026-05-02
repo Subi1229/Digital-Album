@@ -27,6 +27,7 @@ const FONT_OPTIONS = [
   { label: "Kaushan Script", value: "'Kaushan Script', cursive" },
   { label: "Lobster", value: "'Lobster', cursive" },
   // Classic
+  { label: "Playfair Display", value: "'Playfair Display', serif" },
   { label: "Serif", value: "Georgia, serif" },
   { label: "Sans", value: "Arial, sans-serif" },
   { label: "Mono", value: "'Courier New', monospace" },

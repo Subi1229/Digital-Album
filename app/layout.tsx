@@ -55,7 +55,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Pacifico&family=Great+Vibes&family=Sacramento&family=Pinyon+Script&family=Satisfy&family=Caveat:wght@400;700&family=Courgette&family=Kaushan+Script&family=Lobster&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Pacifico&family=Great+Vibes&family=Sacramento&family=Pinyon+Script&family=Satisfy&family=Caveat:wght@400;700&family=Courgette&family=Kaushan+Script&family=Lobster&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
       </head>
       <body style={{ margin: 0, padding: 0, background: "#F5F5F4" }}>
         {children}

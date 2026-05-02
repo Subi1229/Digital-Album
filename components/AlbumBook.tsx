@@ -188,6 +188,7 @@ export default function AlbumBook() {
   const [activeTab, setActiveTab] = useState<AlbumTab>("all");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [menuAlbumId, setMenuAlbumId] = useState<string | null>(null);
+  const [menuOpenUp, setMenuOpenUp] = useState(false);
   const [shareAlbumId, setShareAlbumId] = useState<string | null>(null);
   const [albumDialog, setAlbumDialog] = useState<AlbumDialog | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -766,9 +767,10 @@ export default function AlbumBook() {
       {/* ———————————————————————————————————————————————————————————————————————————————— */}
       {/* Desktop/tablet: normal header in document flow */}
       {!isMobile && (
-        <motion.header className="w-full flex items-center justify-between px-6 pt-6 pb-3"
+        <motion.header className="w-full flex items-center gap-4 px-6 pt-6 pb-3"
           initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.06, duration: 0.4 }}>
+          transition={{ delay: 0.06, duration: 0.4 }}
+          style={{ position: "relative" }}>
           <div className="flex items-center gap-2.5">
             <button
               type="button"
@@ -803,7 +805,16 @@ export default function AlbumBook() {
               </span>
             </div>
           </div>
-          <span className="text-[13px] font-sans transition-colors" style={{ color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52" }}>
+          <span
+            className="text-[13px] font-sans transition-colors"
+            style={{
+              color: isBgDark ? "rgba(255,255,255,0.8)" : "#334a52",
+              position: "fixed",
+              top: 30,
+              right: 24,
+              zIndex: 30,
+            }}
+          >
             {(activeTemplateId === 5 || activeTemplateId === 6)
               ? `${moodboardCount} photos`
               : `${Object.keys(images).length} / ${albumImageLimit} photos`}
@@ -905,13 +916,13 @@ export default function AlbumBook() {
                   background: "rgba(255,255,255,0.97)",
                   backdropFilter: "blur(16px) saturate(180%)",
                   WebkitBackdropFilter: "blur(16px) saturate(180%)",
-                  borderRight: "1px solid rgba(255,255,255,0.55)",
+                  borderRight: "1px solid rgba(255,255,255,0.94)",
                   boxShadow: "0 8px 32px rgba(51,74,82,0.12)",
                 } : {
                   background: "rgba(255,255,255,0.97)",
                   backdropFilter: "blur(16px) saturate(180%)",
                   WebkitBackdropFilter: "blur(16px) saturate(180%)",
-                  borderRight: "1px solid rgba(255,255,255,0.55)",
+                  borderRight: "1px solid rgba(255,255,255,0.94)",
                   boxShadow: "0 8px 32px rgba(51,74,82,0.12)",
                 }}
                 initial={{ x: -320, opacity: 0.75 }}
@@ -978,11 +989,21 @@ export default function AlbumBook() {
                     {visibleAlbums.map((album) => (
                       <div
                         key={album.id}
-                        className="rounded-xl p-2.5"
-                        style={{
-                          background: activeAlbumId === album.id ? "rgba(0,50,66,0.12)" : "rgba(255,255,255,0.35)",
-                          border: activeAlbumId === album.id ? "1px solid rgba(0,50,66,0.25)" : "1px solid rgba(0,0,0,0.10)",
-                        }}
+                        className={activeAlbumId === album.id ? "p-2.5" : "p-2 pb-2"}
+                        style={
+                          activeAlbumId === album.id
+                            ? {
+                                background: "rgba(0,50,66,0.12)",
+                                border: "1px solid rgba(0,50,66,0.25)",
+                                borderRadius: 3,
+                              }
+                            : {
+                                background: "#ffffff",
+                                border: "1px solid rgba(0,0,0,0.08)",
+                                borderRadius: 3,
+                                boxShadow: "0 2px 6px rgba(120,120,130,0.10), 0 1px 2px rgba(120,120,130,0.05)",
+                              }
+                        }
                       >
                         <button
                           type="button"
@@ -993,8 +1014,8 @@ export default function AlbumBook() {
                             const coverSrc = albumFirstSlotImages[album.id];
                             if (coverSrc) {
                               return (
-                                <div className="w-full h-14 rounded-md overflow-hidden"
-                                  style={{ background: "rgba(240,240,240,0.85)", border: "1px solid rgba(255,255,255,0.55)" }}>
+                                <div className="w-full h-20 overflow-hidden"
+                                  style={{ background: "#eeeeee" }}>
                                   <img
                                     src={coverSrc}
                                     alt={`${album.name} cover`}
@@ -1006,15 +1027,15 @@ export default function AlbumBook() {
                             }
 
                             return (
-                              <div className="w-full h-14 rounded-md flex items-center justify-center"
-                                style={{ background: "rgba(240,240,240,0.85)", border: "1px solid rgba(255,255,255,0.55)" }}>
+                              <div className="w-full h-20 flex items-center justify-center"
+                                style={{ background: "#eeeeee" }}>
                                 <svg width="28" height="22" viewBox="0 0 28 22" fill="none" stroke="#003242" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                   <path d="M2 6.2C2 4.4 3.4 3 5.2 3h6.6l1.7 2h9.3c1.8 0 3.2 1.4 3.2 3.2v8.6c0 1.8-1.4 3.2-3.2 3.2H5.2C3.4 20 2 18.6 2 16.8V6.2Z" />
                                 </svg>
                               </div>
                             );
                           })()}
-                          <p className="mt-1.5 text-[11px] font-sans truncate" style={{ color: "#1e1e1e" }}>
+                          <p className="mt-1.5 text-[11px] font-sans truncate text-center" style={{ color: "#1e1e1e" }}>
                             {album.name}
                           </p>
                         </button>
@@ -1038,7 +1059,13 @@ export default function AlbumBook() {
                           <div className="relative" data-album-menu-root>
                             <button
                               type="button"
-                              onClick={() => setMenuAlbumId((prev) => (prev === album.id ? null : album.id))}
+                              onClick={(e) => {
+                                if (menuAlbumId === album.id) { setMenuAlbumId(null); return; }
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                const spaceBelow = window.innerHeight - rect.bottom;
+                                setMenuOpenUp(spaceBelow < 120);
+                                setMenuAlbumId(album.id);
+                              }}
                               className="w-6 h-6 rounded-full flex items-center justify-center"
                               style={{ background: "rgba(240,240,240,0.85)", color: "#334a52" }}
                             >
@@ -1051,11 +1078,11 @@ export default function AlbumBook() {
                             <AnimatePresence>
                               {menuAlbumId === album.id && (
                                 <motion.div
-                                  className="absolute right-0 mt-1 w-28 rounded-lg overflow-hidden z-[90]"
+                                  className={`absolute right-0 w-28 rounded-lg overflow-hidden z-[90] ${menuOpenUp ? "bottom-full mb-1" : "top-full mt-1"}`}
                                   style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 8px 32px rgba(51,74,82,0.12)" }}
-                                  initial={{ opacity: 0, y: 4, scale: 0.98 }}
+                                  initial={{ opacity: 0, y: menuOpenUp ? -4 : 4, scale: 0.98 }}
                                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                                  exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                                  exit={{ opacity: 0, y: menuOpenUp ? -4 : 4, scale: 0.98 }}
                                 >
                                   <button type="button" onClick={() => handleRenameAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: "#1e1e1e" }}>Rename</button>
                                   <button type="button" onClick={() => handleDeleteAlbum(album.id)} className="w-full text-left px-2.5 py-1.5 text-xs font-sans" style={{ color: album.id === "album-1" ? "#003242" : "#1e1e1e" }} disabled={album.id === "album-1"}>Delete</button>
@@ -1143,20 +1170,25 @@ export default function AlbumBook() {
               }
             }}
           >
-            {/* Ground shadow */}
+            {/* Hardcover wrap (textured book cover, sits behind pages, extends on all sides) */}
             <div className="absolute pointer-events-none"
               style={{
-                bottom: -14, left: "8%", right: "8%", height: 28,
-                background: "radial-gradient(ellipse at center, rgba(0,0,0,0.20) 0%, transparent 70%)",
-                filter: "blur(8px)", zIndex: 0,
-              }} />
-
-            {/* Drop shadow ring */}
-            <div className="absolute inset-0 pointer-events-none rounded-sm"
-              style={{
-                boxShadow: "0 28px 70px rgba(0,0,0,0.18), 0 10px 28px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.07)",
+                top: -7, left: -9, right: -9, bottom: -7,
+                borderRadius: 10,
+                background: "linear-gradient(135deg, #b8c4b8 0%, #8fa394 35%, #6f8478 65%, #506258 100%)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -2px 4px rgba(0,0,0,0.18)",
                 zIndex: 0,
+              }}>
+              <div className="absolute inset-0 rounded-[10px]" style={{
+                backgroundImage: "radial-gradient(circle at 2px 2px, rgba(255,255,255,0.18) 1px, transparent 1.6px), radial-gradient(circle at 5px 6px, rgba(0,0,0,0.18) 1px, transparent 1.6px)",
+                backgroundSize: "7px 7px, 7px 7px",
+                mixBlendMode: "overlay",
+                opacity: 0.9,
               }} />
+              <div className="absolute inset-0 rounded-[10px]" style={{
+                background: "linear-gradient(to right, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 6%, rgba(255,255,255,0) 94%, rgba(255,255,255,0.22) 100%)",
+              }} />
+            </div>
 
             <div style={{ position: "relative", width: visualW, height: visualH, overflow: "hidden", zIndex: 1 }}>
               {/* Centre spine shadow */}
@@ -1165,8 +1197,8 @@ export default function AlbumBook() {
                   left: isMobile
                     ? PAGE_W * bookScale - 3
                     : PAGE_W * bookScale - 3,
-                  width: 6, zIndex: 20,
-                  background: "linear-gradient(to right,rgba(0,0,0,0.10) 0%,rgba(0,0,0,0.20) 40%,rgba(0,0,0,0.20) 60%,rgba(0,0,0,0.10) 100%)",
+                  width: 1.5, zIndex: 20,
+                  background: "linear-gradient(to right,rgba(0,0,0,0.05) 0%,rgba(0,0,0,0.10) 40%,rgba(0,0,0,0.10) 60%,rgba(0,0,0,0.05) 100%)",
                   display: isMobile ? "none" : "block",
                   opacity: isFlipping ? 0 : 1,
                   transition: "opacity 0.18s ease",
@@ -1196,8 +1228,8 @@ export default function AlbumBook() {
                 {isMobile && (
                   <div className="absolute top-0 h-full pointer-events-none"
                     style={{
-                      left: PAGE_W * bookScale - 3, width: 6, zIndex: 20,
-                      background: "linear-gradient(to right,rgba(0,0,0,0.10) 0%,rgba(0,0,0,0.20) 40%,rgba(0,0,0,0.20) 60%,rgba(0,0,0,0.10) 100%)",
+                      left: PAGE_W * bookScale - 3, width: 1.5, zIndex: 20,
+                      background: "linear-gradient(to right,rgba(0,0,0,0.05) 0%,rgba(0,0,0,0.10) 40%,rgba(0,0,0,0.10) 60%,rgba(0,0,0,0.05) 100%)",
                       opacity: isFlipping ? 0 : 1,
                       transition: "opacity 0.18s ease",
                     }} />
@@ -1597,7 +1629,7 @@ export default function AlbumBook() {
                                   type="button"
                                   onClick={() => handleConfirmTemplate(tid)}
                                   className="flex flex-col items-center gap-2 rounded-xl p-3"
-                                  style={{ background: "rgba(224,244,255,0.45)", backdropFilter: "blur(16px) saturate(180%)", border: "1px solid rgba(255,255,255,0.55)", boxShadow: "0 8px 32px rgba(51,74,82,0.12)" }}
+                                  style={{ background: "rgba(224,244,255,0.45)", backdropFilter: "blur(16px) saturate(180%)", border: "1px solid rgba(255,255,255,0.94)", boxShadow: "0 8px 32px rgba(51,74,82,0.12)" }}
                                   whileHover={{ scale: 1.03, boxShadow: "0 4px 14px rgba(0,0,0,0.10)" }}
                                   whileTap={{ scale: 0.97 }}
                                 >
@@ -1656,7 +1688,7 @@ export default function AlbumBook() {
                                     style={{
                                       background: selected ? "rgba(0,50,66,0.15)" : "rgba(224,244,255,0.45)",
                                       backdropFilter: "blur(16px) saturate(180%)",
-                                      border: selected ? "1.5px solid #003242" : "1px solid rgba(255,255,255,0.55)",
+                                      border: selected ? "1.5px solid #003242" : "1px solid rgba(255,255,255,0.94)",
                                       boxShadow: "0 8px 32px rgba(51,74,82,0.12)",
                                     }}
                                     whileTap={{ scale: 0.97 }}
