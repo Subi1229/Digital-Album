@@ -27,7 +27,8 @@ interface StickerLayerProps {
 
 export default function StickerLayer(props: StickerLayerProps) {
   const { stickers, pageIndex, containerWidth, containerHeight, onStickersChange, forExport = false } = props;
-  const pageStickers = stickers.filter((s) => s.pageIndex === pageIndex);
+  const [peelingStickerIds, setPeelingStickerIds] = useState<Set<string>>(new Set());
+  const pageStickers = stickers.filter((s) => s.pageIndex === pageIndex && !peelingStickerIds.has(s.id));
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ── Selection state — only one sticker selected at a time ────────────────
@@ -76,12 +77,14 @@ export default function StickerLayer(props: StickerLayerProps) {
   zOrdersRef.current = zOrders;
 
   const handlePeelStart = useCallback((sticker: Sticker, originX: number, originY: number, peelScale: number) => {
+    setPeelingStickerIds((prev) => { const next = new Set(prev); next.add(sticker.id); return next; });
     onStickersChangeRef.current(stickersRef.current.filter((s) => s.id !== sticker.id));
     setPeelingStickers((prev) => [...prev, { sticker, originX, originY, peelScale, zIndex: 5 + (zOrdersRef.current[sticker.id] ?? 0) }]);
   }, []);
 
   const handlePeelDone = useCallback((id: string) => {
     setPeelingStickers((prev) => prev.filter((p) => p.sticker.id !== id));
+    setPeelingStickerIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
   }, []);
 
   const handleSelect = useCallback((id: string) => {
@@ -197,32 +200,32 @@ function PeelAnimation({ sticker, originX, originY, peelScale = 1, zIndex = 20, 
     let rafId: number;
     let timerID: ReturnType<typeof setTimeout>;
     let startTime: number | null = null;
-    const PEEL_DURATION = 820;  // ms
-    const VANISH_DELAY = 5000; // ms
+    const PEEL_DURATION = 1100;  // ms — slower, smoother sweep
+    const VANISH_DELAY = 100; // ms — small tail then unmount overlay
 
     const tick = (timestamp: number) => {
       if (startTime === null) startTime = timestamp;
       const rawP = Math.min((timestamp - startTime) / PEEL_DURATION, 1);
 
       // Two-phase easing:
-      //   0 → 25 %  ease-out-quart  — corner snaps up instantly
-      //   25 → 100 % ease-in-out-cubic — crease sweeps smoothly across
+      //   0 → 22 %  ease-out-quint  — corner snaps up softly
+      //   22 → 100 % ease-in-out-quint — crease sweeps smoothly across
       let p: number;
-      if (rawP < 0.25) {
-        const t = rawP / 0.25;
-        p = (1 - Math.pow(1 - t, 4)) * 0.25;
+      if (rawP < 0.22) {
+        const t = rawP / 0.22;
+        p = (1 - Math.pow(1 - t, 5)) * 0.22;
       } else {
-        const t = (rawP - 0.25) / 0.75;
+        const t = (rawP - 0.22) / 0.78;
         const eio = t < 0.5
-          ? 4 * t * t * t
-          : 1 - Math.pow(-2 * t + 2, 3) / 2;
-        p = 0.25 + eio * 0.75;
+          ? 16 * t * t * t * t * t
+          : 1 - Math.pow(-2 * t + 2, 5) / 2;
+        p = 0.22 + eio * 0.78;
       }
 
-      // ── Mask gradient stop: 100 % → 0 % ─────────────────────────────
+      // ── Mask gradient stop with soft crease band (anti-aliased) ─────
       const stop = (1 - p) * 100;
-      const s0 = Math.max(0, stop - 1);
-      const s1 = Math.min(100, stop + 1);
+      const s0 = Math.max(0, stop - 2.5);
+      const s1 = Math.min(100, stop + 2.5);
       const stuckMask = `linear-gradient(to bottom right, black ${s0}%, transparent ${s1}%)`;
       const frontMask = `linear-gradient(to bottom right, transparent ${s0}%, black ${s1}%)`;
 
