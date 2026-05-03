@@ -1198,9 +1198,8 @@ export default function AlbumBook() {
               {/* Centre spine shadow */}
               <div className="absolute top-0 h-full pointer-events-none"
                 style={{
-                  left: isMobile
-                    ? PAGE_W * bookScale - 3
-                    : PAGE_W * bookScale - 3,
+                  left: "50%",
+                  transform: "translateX(-50%)",
                   width: 1.5, zIndex: 20,
                   background: "linear-gradient(to right,rgba(0,0,0,0.05) 0%,rgba(0,0,0,0.10) 40%,rgba(0,0,0,0.10) 60%,rgba(0,0,0,0.05) 100%)",
                   display: isMobile ? "none" : "block",
@@ -1986,7 +1985,7 @@ function SpreadCanvas({
         className="absolute flex items-center justify-center rounded-full"
         style={{ top: 14, right: 136, width: 32, height: 32, background: drawingActive ? "#1E1E1E" : "rgba(255,255,255,0.94)", boxShadow: "0 1px 6px rgba(0,0,0,0.09)", border: "1.5px solid rgba(0,0,0,0.05)", zIndex: 60, color: drawingActive ? "#FFFFFF" : "#79716B" }}
         title="Freehand Drawing">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l5 5" /></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" /></svg>
       </button>
 
       {/* Layers */}
