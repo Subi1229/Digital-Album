@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useMotionValue } from "framer-motion";
 import { HexColorPicker } from "react-colorful";
 import { MoodboardText } from "@/lib/types";
+import { PAGE_W } from "@/lib/constants";
 
 interface MoodboardTextLayerProps {
   albumId: string;
@@ -41,7 +42,8 @@ export default function MoodboardTextLayer({
   containerHeight,
   onTextsChange,
 }: MoodboardTextLayerProps) {
-  const pageTexts = texts.filter((t) => t.albumId === albumId && t.pageIndex === pageIndex);
+  const isSpread = containerWidth > PAGE_W * 1.1;
+  const pageTexts = texts.filter((t) => t.albumId === albumId && (t.pageIndex === pageIndex || (isSpread && t.pageIndex === pageIndex + 1)));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [colorPickerTargetId, setColorPickerTargetId] = useState<string | null>(null);
 

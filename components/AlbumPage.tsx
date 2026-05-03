@@ -1,33 +1,22 @@
 "use client";
 
 import React, { forwardRef, useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import ImageSlot from "./ImageSlot";
 import StickerLayer from "./StickerLayer";
 import MoodboardImageLayer from "./MoodboardImageLayer";
 import MoodboardTextLayer from "./MoodboardTextLayer";
 import DrawingLayer from "./DrawingLayer";
-import { Sticker, MoodboardImage, MoodboardText } from "@/lib/types";
+import FramePickerModal from "./FramePickerModal";
+import FrameOptionsModal from "./FrameOptionsModal";
+import { Sticker, MoodboardImage, MoodboardText, FrameType } from "@/lib/types";
+import { 
+  PAGE_W, PAGE_H, GRID_X, GRID_Y, GRID_W, GRID_H,
+  COLS, ROWS, COL_GAP, ROW_GAP, 
+  SLOT_W, SLOT_H, INNER_PAD_X, INNER_PAD_Y, SLOT_ASPECT 
+} from "@/lib/constants";
 
-// ─── Figma-exact dimensions ──────────────────────────────────────────────────
-export const PAGE_W = 478;
-export const PAGE_H = 650;
-
-export const GRID_X = 28;
-export const GRID_Y = 47;
-export const GRID_W = 416;
-export const GRID_H = 554;
-const COLS = 3;
-const ROWS = 3;
-const COL_GAP = 8;
-const ROW_GAP = 10;
-
-const SLOT_W = (GRID_W - (COLS - 1) * COL_GAP) / COLS;
-const SLOT_H = (GRID_H - (ROWS - 1) * ROW_GAP) / ROWS;
-export const INNER_PAD_X = 5;
-export const INNER_PAD_Y = 6;
-
-export const SLOT_ASPECT = SLOT_W / SLOT_H;
 
 // ─── Template slot helpers ────────────────────────────────────────────────────
 const SLOT_COL_W = Math.floor((GRID_W - COL_GAP) / 2); // 204
@@ -145,8 +134,52 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
   ) => {
     const [localMoodboardImages, setLocalMoodboardImages] = useState<MoodboardImage[]>([]);
     const [localMoodboardTexts, setLocalMoodboardTexts] = useState<MoodboardText[]>([]);
-    // ── Moodboard "Add Image" file input (template 5 only) ─────────────────
+
+    // ── Frame picker state (template 5) ────────────────────────────────────
+    const [showFramePicker, setShowFramePicker] = useState(false);
+    const [showFrameOptions, setShowFrameOptions] = useState(false);
+    const [pendingFrame, setPendingFrame] = useState<FrameType>("none");
+    const pendingFrameOptsRef = useRef<{ color: string; text: string; emoji: string; borderRadius?: number }>({ color: "#ffffff", text: "", emoji: "", borderRadius: 0 });
+
+    // ── Moodboard file inputs (template 5 only) ────────────────────────────
     const mbFileInputRef = useRef<HTMLInputElement>(null);
+
+    const addMoodboardImageWithFrame = useCallback(
+      (dataUrl: string, frame: FrameType, opts: { color: string; text: string; emoji: string; borderRadius?: number }) => {
+        if (!onMoodboardImagesChange) return;
+        const img = new window.Image();
+        img.onload = () => {
+          let maxW = 240, maxH = 180;
+          if (frame === "wide-polaroid") { maxW = 320; maxH = 240; }
+          if (frame === "vertical-polaroid") { maxW = 185; maxH = 255; }
+          if (frame === "stamp") { maxW = 260; maxH = 260; }
+          if (frame === "clip-polaroid") { maxW = 185; maxH = 255; }
+
+          let w = Math.round(img.naturalWidth * Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1));
+          let h = Math.round(img.naturalHeight * Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1));
+
+          // Force fixed sizes for frames so they don't deform based on image aspect ratio
+          if (frame === "wide-polaroid") { w = maxW; h = maxH; }
+          else if (frame === "vertical-polaroid" || frame === "clip-polaroid") { w = maxW; h = maxH; }
+          else if (frame === "stamp") { w = maxW; h = maxH; }
+          const x = Math.round((PAGE_W - w) / 2);
+          const y = Math.round((PAGE_H - h) / 2);
+          const nextZ = moodboardImages.reduce((max, e) => Math.max(max, e.zIndex ?? 1), 1) + 1;
+          onMoodboardImagesChange([...moodboardImages, {
+            id: `mb-${albumId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            albumId, pageIndex, src: dataUrl, x, y, width: w, height: h, rotation: 0, zIndex: nextZ,
+            frame: frame === "none" ? undefined : frame,
+            frameColor: frame !== "none" ? opts.color : undefined,
+            frameText: frame === "wide-polaroid" ? opts.text : undefined,
+            frameEmoji: frame === "vertical-polaroid" ? opts.emoji : undefined,
+            borderRadius: opts.borderRadius,
+            src2: undefined,
+          }]);
+        };
+        img.src = dataUrl;
+      },
+      [albumId, moodboardImages, onMoodboardImagesChange, pageIndex],
+    );
 
     const addMoodboardImageFromFile = useCallback(
       (file: File) => {
@@ -155,45 +188,29 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
         reader.onload = (ev) => {
           const dataUrl = ev.target?.result as string;
           if (!dataUrl) return;
-          const img = new window.Image();
-          img.onload = () => {
-            // Default size: fit within 240×180, preserving aspect ratio
-            const maxW = templateId === 6 ? 400 : 240;
-            const maxH = templateId === 6 ? 300 : 180;
-            const ratio = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
-            const w = Math.round(img.naturalWidth * ratio);
-            const h = Math.round(img.naturalHeight * ratio);
-            // Centered placement — for style 6 use full spread width
-            const canvasW = templateId === 6 ? PAGE_W * 2 : PAGE_W;
-            const x = Math.round((canvasW - w) / 2);
-            const y = Math.round((PAGE_H - h) / 2);
-            const nextZ = moodboardImages.reduce((max, entry) => Math.max(max, entry.zIndex ?? 1), 1) + 1;
-            const newImg: MoodboardImage = {
-              id: `mb-${albumId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              albumId,
-              pageIndex,
-              src: dataUrl,
-              x, y, width: w, height: h,
-              rotation: 0,
-              zIndex: nextZ,
-            };
-            onMoodboardImagesChange([...moodboardImages, newImg]);
-          };
-          img.src = dataUrl;
+          addMoodboardImageWithFrame(dataUrl, "none", { color: "#ffffff", text: "", emoji: "" });
         };
         reader.readAsDataURL(file);
       },
-      [albumId, moodboardImages, onMoodboardImagesChange, pageIndex],
+      [addMoodboardImageWithFrame, onMoodboardImagesChange],
     );
 
     const handleMbFileSelect = useCallback(
       (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        addMoodboardImageFromFile(file);
+        const f = e.target.files?.[0];
+        if (!f) { e.target.value = ""; return; }
+        const opts = pendingFrameOptsRef.current;
+        const frame = pendingFrame;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target?.result as string;
+          if (!dataUrl) return;
+          addMoodboardImageWithFrame(dataUrl, frame, opts);
+        };
+        reader.readAsDataURL(f);
         e.target.value = "";
       },
-      [addMoodboardImageFromFile],
+      [pendingFrame, addMoodboardImageWithFrame],
     );
 
     const handleMbDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -260,7 +277,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
           <div style={{ position: "absolute", top: 0, left: offsetX, width: SPREAD_W, height: PAGE_H, pointerEvents: "none" }}>
             <div style={{ position: "absolute", inset: 0, zIndex: 45, pointerEvents: "none" }}>
               <MoodboardImageLayer albumId={albumId} images={moodboardImages} pageIndex={isLeft ? pageIndex : pageIndex - 1}
-                containerWidth={SPREAD_W} containerHeight={PAGE_H} onImagesChange={onMoodboardImagesChange ?? (() => {})} forExport={forExport} />
+                containerWidth={SPREAD_W} containerHeight={PAGE_H} onImagesChange={onMoodboardImagesChange ?? (() => { })} forExport={forExport} />
             </div>
             <div style={{ position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none" }}>
               <StickerLayer stickers={stickers} pageIndex={isLeft ? pageIndex : pageIndex - 1}
@@ -268,13 +285,15 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             </div>
             <div style={{ position: "absolute", inset: 0, zIndex: 55, pointerEvents: "none" }}>
               <MoodboardTextLayer albumId={albumId} pageIndex={isLeft ? pageIndex : pageIndex - 1}
-                texts={moodboardTexts} containerWidth={SPREAD_W} containerHeight={PAGE_H} onTextsChange={onMoodboardTextsChange ?? (() => {})} />
+                texts={moodboardTexts} containerWidth={SPREAD_W} containerHeight={PAGE_H} onTextsChange={onMoodboardTextsChange ?? (() => { })} />
             </div>
-            {(() => { const pi = isLeft ? pageIndex : pageIndex - 1; return drawings[pi] && (
-              <div className="absolute inset-0 z-[58] pointer-events-none">
-                <img src={drawings[pi]} alt="drawing" className="w-full h-full object-contain" />
-              </div>
-            ); })()}
+            {(() => {
+              const pi = isLeft ? pageIndex : pageIndex - 1; return drawings[pi] && (
+                <div className="absolute inset-0 z-[58] pointer-events-none">
+                  <img src={drawings[pi]} alt="drawing" className="w-full h-full object-contain" />
+                </div>
+              );
+            })()}
           </div>
         </div>
       );
@@ -301,7 +320,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             contain: forExport ? undefined : "strict",
           }}
         >
-          {/* Hidden file input for moodboard images */}
+          {/* Hidden file inputs for moodboard images */}
           <input
             ref={mbFileInputRef}
             type="file"
@@ -310,9 +329,36 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             onChange={handleMbFileSelect}
           />
 
+          {/* Frame picker + options modals via portal (escape CSS transform) */}
+          {typeof window !== "undefined" && createPortal(
+            <>
+              <FramePickerModal
+                open={showFramePicker}
+                onSelect={(frame) => {
+                  setPendingFrame(frame);
+                  setShowFramePicker(false);
+                  setShowFrameOptions(true);
+                }}
+                onClose={() => setShowFramePicker(false)}
+              />
+              <FrameOptionsModal
+                open={showFrameOptions}
+                frame={pendingFrame}
+                onConfirm={(opts) => {
+                  pendingFrameOptsRef.current = opts;
+                  setShowFrameOptions(false);
+                  mbFileInputRef.current?.click();
+                }}
+                onBack={() => { setShowFrameOptions(false); setShowFramePicker(true); }}
+                onClose={() => setShowFrameOptions(false)}
+              />
+            </>,
+            document.body
+          )}
+
           {/* Add Image button */}
           <motion.button
-            onClick={() => mbFileInputRef.current?.click()}
+            onClick={() => { setPendingFrame("none"); setShowFramePicker(true); }}
             className="absolute flex items-center justify-center rounded-full"
             style={{
               top: 14,

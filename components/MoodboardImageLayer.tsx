@@ -1,6 +1,7 @@
 "use client";
 
 import React, {
+  useId,
   useCallback,
   useEffect,
   useRef,
@@ -8,7 +9,164 @@ import React, {
   startTransition,
 } from "react";
 import { motion, useMotionValue } from "framer-motion";
-import { MoodboardImage } from "@/lib/types";
+import { MoodboardImage, FrameType } from "@/lib/types";
+import { PAGE_W } from "@/lib/constants";
+
+
+// ── Frame helpers ──────────────────────────────────────────────────────────────
+function getImageInset(frame?: FrameType): React.CSSProperties {
+  switch (frame) {
+    case "stamp":
+      return { top: "2.5%", right: "2.5%", bottom: "2.5%", left: "2.5%" };
+    case "wide-polaroid":
+    case "vertical-polaroid":
+    case "clip-polaroid":
+      return { top: "2.5%", right: "2.5%", bottom: "22%", left: "2.5%" };
+    default:
+      return { top: 0, right: 0, bottom: 0, left: 0 };
+  }
+}
+
+function StampFrame({ color, width, height }: { color: string; width: number; height: number }) {
+  const uid = useId();
+  const maskId = `stamp-${uid}`;
+  
+  const r = 3.5;      // Slightly larger hole radius for bigger gaps
+  const step = 16;    // Much larger spacing
+  
+  // Calculate horizontal holes
+  const nx = Math.max(1, Math.round(width / step));
+  const dx = width / nx;
+  
+  // Calculate vertical holes
+  const ny = Math.max(1, Math.round(height / step));
+  const dy = height / ny;
+
+  const holes: JSX.Element[] = [];
+  
+  // Top & Bottom edges
+  for (let i = 0; i <= nx; i++) {
+    const x = i * dx;
+    holes.push(<circle key={`t-${i}`} cx={x} cy={0} r={r} fill="black" />);
+    holes.push(<circle key={`b-${i}`} cx={x} cy={height} r={r} fill="black" />);
+  }
+  
+  // Left & Right edges
+  for (let i = 1; i < ny; i++) {
+    const y = i * dy;
+    holes.push(<circle key={`l-${i}`} cx={0} cy={y} r={r} fill="black" />);
+    holes.push(<circle key={`r-${i}`} cx={width} cy={y} r={r} fill="black" />);
+  }
+
+  return (
+    <svg
+      style={{ 
+        position: "absolute", inset: -r, width: `calc(100% + ${r*2}px)`, height: `calc(100% + ${r*2}px)`, 
+        pointerEvents: "none", zIndex: 3,
+        filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.15))"
+      }}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+    >
+      <defs>
+        <mask id={maskId}>
+          <rect width={width} height={height} fill="white" />
+          {holes}
+        </mask>
+      </defs>
+      <rect width={width} height={height} fill={color} mask={`url(#${maskId})`} />
+      {/* Inner subtle highlight */}
+      <rect x="0.5" y="0.5" width={width-1} height={height-1} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1" mask={`url(#${maskId})`} />
+    </svg>
+  );
+}
+
+function PolaroidFrame({ color, text, isWide }: { color: string; text?: string; isWide: boolean }) {
+  const uid = useId();
+  const maskId = `polaroid-${uid}`;
+  const textColor = color === "#1a1a1a" ? "#eee" : "#555";
+  return (
+    <svg
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 3 }}
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+    >
+      <defs>
+        <mask id={maskId}>
+          <rect width="100" height="100" fill="white" />
+          <rect x="2.5" y="2.5" width="95" height="75.5" rx="1" fill="black" />
+        </mask>
+      </defs>
+      <rect width="100" height="100" fill={color} mask={`url(#${maskId})`} />
+      <rect x="0" y="78" width="100" height="22" fill={color} />
+      {text && (
+        <text
+          x="50" y="91"
+          textAnchor="middle"
+          fontSize={isWide ? "7" : "8"}
+          fontFamily="'Dancing Script', cursive"
+          fill={textColor}
+        >{text}</text>
+      )}
+    </svg>
+  );
+}
+
+function VerticalPolaroidFrame({ color, emoji }: { color: string; emoji?: string }) {
+  const uid = useId();
+  const maskId = `vpolaroid-${uid}`;
+  return (
+    <>
+      <svg
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 3 }}
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <mask id={maskId}>
+            <rect width="100" height="100" fill="white" />
+            <rect x="2.5" y="2.5" width="95" height="75.5" rx="1" fill="black" />
+          </mask>
+        </defs>
+        <rect width="100" height="100" fill={color} mask={`url(#${maskId})`} />
+        <rect x="0" y="78" width="100" height="22" fill={color} />
+      </svg>
+      {emoji && (
+        <div style={{
+          position: "absolute", bottom: "3%", left: "8%",
+          width: "18%", height: "16%",
+          pointerEvents: "none", zIndex: 4,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <span style={{ fontSize: "130%", lineHeight: 1 }}>{emoji}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ClipPolaroidFrame({ color }: { color: string }) {
+  return (
+    <>
+      <VerticalPolaroidFrame color={color} />
+      <img
+        src="/assets/clip.png"
+        alt=""
+        draggable={false}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: "50%",
+          width: "48%",
+          transform: "translate(-50%, -70%)",
+          pointerEvents: "none",
+          userSelect: "none",
+          zIndex: 5,
+        }}
+      />
+    </>
+  );
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CORNER_H = 24;   // invisible corner resize hit area
@@ -57,8 +215,13 @@ export default function MoodboardImageLayer({
   onImagesChange,
   forExport = false,
 }: MoodboardImageLayerProps) {
+  const isSpread = containerWidth > PAGE_W * 1.1;
   const pageImages = images.filter(
-    (img) => img.albumId === albumId && (typeof img.pageIndex !== "number" || img.pageIndex === pageIndex),
+    (img) => img.albumId === albumId && (
+      typeof img.pageIndex !== "number" || 
+      img.pageIndex === pageIndex || 
+      (isSpread && img.pageIndex === pageIndex + 1)
+    ),
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -659,19 +822,51 @@ function MoodboardImageItem({
       onPointerEnter={(e) => { if (e.pointerType === "pen" || e.pointerType === "mouse") setIsHovered(true); }}
       onPointerLeave={() => setIsHovered(false)}
     >
+
+      {/* ── Frame backgrounds ────────────────────────────────────────────── */}
+      {image.frame === "stamp" && (
+        <StampFrame color={image.frameColor || "#ffffff"} width={image.width} height={image.height} />
+      )}
+      {(image.frame === "wide-polaroid" || image.frame === "vertical-polaroid" || image.frame === "clip-polaroid") && (
+        <div style={{
+          position: "absolute", inset: 0,
+          background: image.frameColor || "#ffffff",
+          borderRadius: 6,
+          pointerEvents: "none",
+          filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.15))"
+        }} />
+      )}
+
       {/* ── Photo ─────────────────────────────────────────────────────────── */}
       <div
         style={{
           position: "absolute",
-          inset: 0,
+          ...(image.frame && image.frame !== "none"
+            ? getImageInset(image.frame)
+            : { inset: 0 }),
           backgroundImage: `url(${image.src})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat",
-          borderRadius: RADIUS,
+          borderRadius: image.frame && image.frame !== "none" ? 2 : (image.borderRadius ?? RADIUS),
+          boxShadow: image.frame && image.frame !== "none"
+            ? "inset 0 0 0 1.5px rgba(255, 255, 255, 0.4), inset 0 2px 6px rgba(0,0,0,0.12)"
+            : undefined,
           pointerEvents: "none",
+          zIndex: 5,
         }}
       />
+
+      {/* ── Frame foregrounds (Clip/Text/Emoji) ────────────────────────────── */}
+      {image.frame === "wide-polaroid" && (
+        <PolaroidFrame color={image.frameColor || "#ffffff"} text={image.frameText} isWide={true} />
+      )}
+      {image.frame === "vertical-polaroid" && (
+        <VerticalPolaroidFrame color={image.frameColor || "#ffffff"} emoji={image.frameEmoji} />
+      )}
+      {image.frame === "clip-polaroid" && (
+        <ClipPolaroidFrame color={image.frameColor || "#ffffff"} />
+      )}
 
       {/* ── Selection border ──────────────────────────────────────────────── */}
       {isSelected && (
@@ -679,7 +874,7 @@ function MoodboardImageItem({
           style={{
             position: "absolute",
             inset: 0,
-            borderRadius: RADIUS,
+            borderRadius: image.borderRadius ?? RADIUS,
             border: "1.5px dashed rgba(99,102,241,0.75)",
             pointerEvents: "none",
             boxSizing: "border-box",

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@use-gesture/react": "^10.3.0",
+    "emoji-picker-react": "^4.19.1",
     "framer-motion": "^11.1.7",
     "html2canvas": "^1.4.1",
     "idb": "^8.0.0",

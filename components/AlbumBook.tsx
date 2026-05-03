@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useRef, useState, useCallback, useEffect, useMemo, startTransition } from "react";
+import ReactDOM from "react-dom";
 import HTMLFlipBook from "react-pageflip";
 import SplashScreen from "@/components/SplashScreen";
 import { motion, AnimatePresence } from "framer-motion";
-import AlbumPage, { PAGE_W, PAGE_H, SLOT_ASPECT } from "./AlbumPage";
+import AlbumPage from "./AlbumPage";
+import { PAGE_W, PAGE_H, SLOT_ASPECT } from "@/lib/constants";
 import MoodboardImageLayer from "./MoodboardImageLayer";
 import MoodboardTextLayer from "./MoodboardTextLayer";
 import StickerLayer from "./StickerLayer";
@@ -12,7 +14,9 @@ import DrawingLayer from "./DrawingLayer";
 import CropModal from "./CropModal";
 import StickerPanel from "./StickerPanel";
 import ShareModal from "./ShareModal";
-import { SlotImage, Sticker, LibrarySticker, PendingCrop, MoodboardImage, MoodboardText } from "@/lib/types";
+import { SlotImage, Sticker, LibrarySticker, PendingCrop, MoodboardImage, MoodboardText, FrameType } from "@/lib/types";
+import FramePickerModal from "./FramePickerModal";
+import FrameOptionsModal from "./FrameOptionsModal";
 import {
   getAllImages,
   saveImage,
@@ -312,7 +316,7 @@ export default function AlbumBook() {
   // Template modal scroll — non-passive touch listeners so scroll works on tablets
   useEffect(() => {
     function attachScroll(el: HTMLDivElement | null) {
-      if (!el) return () => {};
+      if (!el) return () => { };
       let lastX = 0;
       const onStart = (e: TouchEvent) => { lastX = e.touches[0].clientX; };
       const onMove = (e: TouchEvent) => {
@@ -993,16 +997,16 @@ export default function AlbumBook() {
                         style={
                           activeAlbumId === album.id
                             ? {
-                                background: "rgba(0,50,66,0.12)",
-                                border: "1px solid rgba(0,50,66,0.25)",
-                                borderRadius: 3,
-                              }
+                              background: "rgba(0,50,66,0.12)",
+                              border: "1px solid rgba(0,50,66,0.25)",
+                              borderRadius: 3,
+                            }
                             : {
-                                background: "#ffffff",
-                                border: "1px solid rgba(0,0,0,0.08)",
-                                borderRadius: 3,
-                                boxShadow: "0 2px 6px rgba(120,120,130,0.10), 0 1px 2px rgba(120,120,130,0.05)",
-                              }
+                              background: "#ffffff",
+                              border: "1px solid rgba(0,0,0,0.08)",
+                              borderRadius: 3,
+                              boxShadow: "0 2px 6px rgba(120,120,130,0.10), 0 1px 2px rgba(120,120,130,0.05)",
+                            }
                         }
                       >
                         <button
@@ -1826,30 +1830,71 @@ function SpreadCanvas({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Frame picker state
+  const [showFramePicker, setShowFramePicker] = useState(false);
+  const [showFrameOptions, setShowFrameOptions] = useState(false);
+  const [pendingFrame, setPendingFrame] = useState<FrameType>("none");
+  const pendingFrameOptsRef = useRef<{ color: string; text: string; emoji: string; borderRadius?: number }>({ color: "#ffffff", text: "", emoji: "" });
+
+  const addImageWithFrame = useCallback((
+    dataUrl: string,
+    frame: FrameType,
+    opts: { color: string; text: string; emoji: string; borderRadius?: number },
+  ) => {
+    const img = new window.Image();
+    img.onload = () => {
+      let maxW = 400, maxH = 300;
+      if (frame === "wide-polaroid") { maxW = 380; maxH = 280; }
+      if (frame === "vertical-polaroid") { maxW = 220; maxH = 305; }
+      if (frame === "stamp") { maxW = 320; maxH = 320; }
+      if (frame === "clip-polaroid") { maxW = 220; maxH = 305; }
+
+      let w = Math.round(img.naturalWidth * Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1));
+      let h = Math.round(img.naturalHeight * Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1));
+
+      // Force fixed sizes for frames so they don't deform based on image aspect ratio
+      if (frame === "wide-polaroid") { w = maxW; h = maxH; }
+      else if (frame === "vertical-polaroid" || frame === "clip-polaroid") { w = maxW; h = maxH; }
+      else if (frame === "stamp") { w = maxW; h = maxH; }
+      const x = Math.round((width - w) / 2);
+      const y = Math.round((height - h) / 2);
+      const nextZ = moodboardImages.reduce((m, e) => Math.max(m, e.zIndex ?? 1), 1) + 1;
+      onMoodboardImagesChange([...moodboardImages, {
+        id: `mb-${albumId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        albumId, pageIndex, src: dataUrl, x, y, width: w, height: h, rotation: 0, zIndex: nextZ,
+        frame: frame === "none" ? undefined : frame,
+        frameColor: frame !== "none" ? opts.color : undefined,
+        frameText: frame === "wide-polaroid" ? opts.text : undefined,
+        frameEmoji: frame === "vertical-polaroid" ? opts.emoji : undefined,
+        borderRadius: opts.borderRadius,
+        src2: undefined,
+      }]);
+    };
+    img.src = dataUrl;
+  }, [albumId, moodboardImages, onMoodboardImagesChange, pageIndex, width, height]);
+
   const addImage = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string;
       if (!dataUrl) return;
-      const img = new window.Image();
-      img.onload = () => {
-        const maxW = 400, maxH = 300;
-        const ratio = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
-        const w = Math.round(img.naturalWidth * ratio);
-        const h = Math.round(img.naturalHeight * ratio);
-        const x = Math.round((width - w) / 2);
-        const y = Math.round((height - h) / 2);
-        const nextZ = moodboardImages.reduce((m, e) => Math.max(m, e.zIndex ?? 1), 1) + 1;
-        onMoodboardImagesChange([...moodboardImages, {
-          id: `mb-${albumId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          albumId, pageIndex, src: dataUrl, x, y, width: w, height: h, rotation: 0, zIndex: nextZ,
-        }]);
-      };
-      img.src = dataUrl;
+      addImageWithFrame(dataUrl, "none", { color: "#ffffff", text: "", emoji: "" });
     };
     reader.readAsDataURL(file);
-  }, [albumId, moodboardImages, onMoodboardImagesChange, pageIndex, width, height]);
+  }, [addImageWithFrame]);
+
+  const handleFrameSelected = useCallback((frame: FrameType) => {
+    setPendingFrame(frame);
+    setShowFramePicker(false);
+    setShowFrameOptions(true);
+  }, []);
+
+  const handleFrameOptionsConfirm = useCallback((opts: { color: string; text: string; emoji: string; borderRadius?: number }) => {
+    pendingFrameOptsRef.current = opts;
+    setShowFrameOptions(false);
+    fileInputRef.current?.click();
+  }, []);
 
   const addText = useCallback(() => {
     const nextZ = moodboardTexts.reduce((m, e) => Math.max(m, e.zIndex ?? 1), 1) + 1;
@@ -1883,11 +1928,36 @@ function SpreadCanvas({
         if (file?.type.startsWith("image/")) addImage(file);
       }}
     >
+      {/* Primary file input — used for all frame types */}
       <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }}
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) { addImage(f); e.target.value = ""; } }} />
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (!f) { e.target.value = ""; return; }
+          const opts = pendingFrameOptsRef.current;
+          const frame = pendingFrame;
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const dataUrl = ev.target?.result as string;
+            if (!dataUrl) return;
+            addImageWithFrame(dataUrl, frame, opts);
+          };
+          reader.readAsDataURL(f);
+          e.target.value = "";
+        }}
+      />
+      {/* Frame modals via portal — escape the book's CSS transform */}
+      {typeof window !== "undefined" && ReactDOM.createPortal(
+        <>
+          <FramePickerModal open={showFramePicker} onSelect={handleFrameSelected} onClose={() => setShowFramePicker(false)} />
+          <FrameOptionsModal open={showFrameOptions} frame={pendingFrame} onConfirm={handleFrameOptionsConfirm}
+            onBack={() => { setShowFrameOptions(false); setShowFramePicker(true); }}
+            onClose={() => setShowFrameOptions(false)} />
+        </>,
+        document.body
+      )}
 
       {/* Toolbar buttons — top right */}
-      <motion.button onClick={() => fileInputRef.current?.click()}
+      <motion.button onClick={() => { setPendingFrame("none"); setShowFramePicker(true); }}
         className="absolute flex items-center justify-center rounded-full"
         style={{ top: 14, right: 16, width: 32, height: 32, background: "rgba(255,255,255,0.94)", boxShadow: "0 1px 6px rgba(0,0,0,0.09)", border: "1.5px solid rgba(0,0,0,0.05)", zIndex: 60 }}
         whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.92 }} title="Add image">
@@ -2056,4 +2126,3 @@ function NavButton({ direction, onClick, disabled, rotated }: {
     </motion.button>
   );
 }
-

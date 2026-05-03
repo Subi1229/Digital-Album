@@ -7,6 +7,7 @@ import {
   useMotionValue,
 } from "framer-motion";
 import { Sticker } from "@/lib/types";
+import { PAGE_W } from "@/lib/constants";
 import { saveSticker, deleteSticker } from "@/lib/db";
 // MOBILE FIX: shared flag so ImageSlot can suppress ghost clicks from sticker taps
 import { markStickerPress } from "@/lib/stickerInteraction";
@@ -28,7 +29,8 @@ interface StickerLayerProps {
 export default function StickerLayer(props: StickerLayerProps) {
   const { stickers, pageIndex, containerWidth, containerHeight, onStickersChange, forExport = false } = props;
   const [peelingStickerIds, setPeelingStickerIds] = useState<Set<string>>(new Set());
-  const pageStickers = stickers.filter((s) => s.pageIndex === pageIndex && !peelingStickerIds.has(s.id));
+  const isSpread = containerWidth > PAGE_W * 1.1;
+  const pageStickers = stickers.filter((s) => (s.pageIndex === pageIndex || (isSpread && s.pageIndex === pageIndex + 1)) && !peelingStickerIds.has(s.id));
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ── Selection state — only one sticker selected at a time ────────────────
@@ -96,7 +98,7 @@ export default function StickerLayer(props: StickerLayerProps) {
     const updated = stickers.map((s) => s.id === id ? { ...s, zIndex: newZ } : s);
     onStickersChange(updated);
     const target = updated.find((s) => s.id === id);
-    if (target) saveSticker(target).catch(() => {});
+    if (target) saveSticker(target).catch(() => { });
   }, [stickers, onStickersChange]);
 
   // Deselect on any tap that lands outside a sticker element.

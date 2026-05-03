@@ -44,6 +44,8 @@ export interface PendingCrop {
   aspectRatio: number;
 }
 
+export type FrameType = 'none' | 'stamp' | 'wide-polaroid' | 'vertical-polaroid' | 'clip-polaroid';
+
 export interface MoodboardImage {
   id: string;
   albumId: string;
@@ -55,6 +57,12 @@ export interface MoodboardImage {
   rotation: number; // degrees, rotates around image center
   zIndex: number;
   pageIndex?: number;
+  frame?: FrameType;
+  frameColor?: string;
+  frameText?: string;
+  frameEmoji?: string;
+  borderRadius?: number;
+  src2?: string;
 }
 
 export interface MoodboardText {

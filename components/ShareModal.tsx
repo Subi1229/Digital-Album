@@ -3,7 +3,8 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import AlbumPage, { PAGE_W, PAGE_H, GRID_X, GRID_Y, INNER_PAD_X, INNER_PAD_Y, getSlotDefs } from "./AlbumPage";
+import AlbumPage, { getSlotDefs } from "./AlbumPage";
+import { PAGE_W, PAGE_H, GRID_X, GRID_Y, INNER_PAD_X, INNER_PAD_Y } from "@/lib/constants";
 import MoodboardImageLayer from "./MoodboardImageLayer";
 import MoodboardTextLayer from "./MoodboardTextLayer";
 import StickerLayer from "./StickerLayer";
@@ -109,44 +110,157 @@ async function overdrawMoodboardImages(
   moodboardImages: import("@/lib/types").MoodboardImage[],
   albumId: string,
   pageIndex: number,
-  scale: number
+  scale: number,
+  isSpread: boolean = false
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const pageImgs = moodboardImages
-    .filter((m) => m.albumId === albumId && (typeof m.pageIndex !== "number" || m.pageIndex === pageIndex))
+    .filter((m) => m.albumId === albumId && (
+      typeof m.pageIndex !== "number" || 
+      m.pageIndex === pageIndex || 
+      (isSpread && m.pageIndex === pageIndex + 1)
+    ))
     .sort((a, b) => (a.zIndex ?? 1) - (b.zIndex ?? 1));
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   for (const m of pageImgs) {
     await new Promise<void>((resolve) => {
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         if (img.naturalWidth === 0 || img.naturalHeight === 0) { resolve(); return; }
         const cx = (m.x + m.width / 2) * scale;
         const cy = (m.y + m.height / 2) * scale;
         const dw = m.width * scale;
         const dh = m.height * scale;
         const rad = (m.rotation * Math.PI) / 180;
-        // Cover-crop: sample from source so destination is fully filled
-        const srcScale = Math.max(dw / img.naturalWidth, dh / img.naturalHeight);
-        const sw = dw / srcScale;
-        const sh = dh / srcScale;
+        const frame = m.frame || "none";
+        const frameColor = m.frameColor || "#ffffff";
+        const userBr = (frame !== "none") ? 2 : (m.borderRadius !== undefined ? m.borderRadius : 15);
+        const br = Math.min(userBr, m.width / 2, m.height / 2) * scale;
+
+        let pw = dw, ph = dh, px = -dw / 2, py = -dh / 2;
+        if (frame === "wide-polaroid" || frame === "vertical-polaroid" || frame === "clip-polaroid") {
+          const insetL = 0.025 * dw;
+          const insetR = 0.025 * dw;
+          const insetT = 0.025 * dh;
+          const insetB = 0.22 * dh;
+          pw = dw - insetL - insetR;
+          ph = dh - insetT - insetB;
+          px = -dw / 2 + insetL;
+          py = -dh / 2 + insetT;
+        } else if (frame === "stamp") {
+          const inset = 0.025 * dw;
+          pw = dw - inset * 2;
+          ph = dh - inset * 2;
+          px = -dw / 2 + inset;
+          py = -dh / 2 + inset;
+        }
+
+        const srcScale = Math.max(pw / img.naturalWidth, ph / img.naturalHeight);
+        const sw = pw / srcScale;
+        const sh = ph / srcScale;
         const sx = (img.naturalWidth - sw) / 2;
         const sy = (img.naturalHeight - sh) / 2;
+
         ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // reset any lingering html2canvas transform
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
         ctx.translate(cx, cy);
         ctx.rotate(rad);
-        roundedRectPath(ctx, -dw / 2, -dh / 2, dw, dh, 15 * scale);
-        ctx.clip();
-        ctx.drawImage(img, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+
+        if (frame === "wide-polaroid" || frame === "vertical-polaroid" || frame === "clip-polaroid") {
+          // 1. Draw frame base
+          ctx.fillStyle = frameColor;
+          ctx.shadowColor = "rgba(0,0,0,0.15)";
+          ctx.shadowBlur = 4 * scale;
+          ctx.shadowOffsetY = 2 * scale;
+          roundedRectPath(ctx, -dw / 2, -dh / 2, dw, dh, 6 * scale);
+          ctx.fill();
+          ctx.shadowColor = "transparent";
+
+          // 2. Draw photo
+          ctx.save();
+          roundedRectPath(ctx, px, py, pw, ph, br);
+          ctx.clip();
+          ctx.drawImage(img, sx, sy, sw, sh, px, py, pw, ph);
+          ctx.restore();
+
+          // 3. Draw frame text/emoji
+          if (frame === "wide-polaroid" && m.frameText) {
+            const textColor = frameColor === "#1a1a1a" ? "#eee" : "#555";
+            ctx.fillStyle = textColor;
+            ctx.font = `${Math.round(14 * scale)}px Georgia`;
+            ctx.textAlign = "center";
+            ctx.fillText(m.frameText, 0, dh / 2 - 12 * scale);
+          } else if (frame === "vertical-polaroid" && m.frameEmoji) {
+            ctx.font = `${Math.round(24 * scale)}px Arial`;
+            ctx.textAlign = "center";
+            ctx.fillText(m.frameEmoji, 0, dh / 2 - 12 * scale);
+          } else if (frame === "clip-polaroid") {
+             // Draw actual clip image to match UI
+             await new Promise<void>((resolveClip) => {
+               const clipImg = new Image();
+               clipImg.onload = () => {
+                 const clipW = dw * 0.48;
+                 const clipAspect = clipImg.naturalWidth / clipImg.naturalHeight;
+                 const clipH = clipW / clipAspect;
+                 ctx.drawImage(clipImg, -clipW / 2, -dh / 2 - clipH * 0.7, clipW, clipH);
+                 resolveClip();
+               };
+               clipImg.onerror = () => resolveClip();
+               clipImg.src = "/assets/clip.png";
+             });
+          }
+        } else if (frame === "stamp") {
+          // Stamp background
+          ctx.fillStyle = frameColor;
+          ctx.beginPath();
+          ctx.rect(-dw / 2, -dh / 2, dw, dh);
+          ctx.fill();
+          
+          // Use White circles for the "holes" to keep it solid
+          ctx.fillStyle = "#ffffff";
+          const r = 3.5 * scale;
+          const step = 16 * scale;
+
+          // Horizontal holes
+          const nx = Math.max(1, Math.round(dw / step));
+          const dx = dw / nx;
+          for (let i = 0; i <= nx; i++) {
+            const tx = -dw / 2 + i * dx;
+            ctx.beginPath(); ctx.arc(tx, -dh / 2, r, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(tx, dh / 2, r, 0, Math.PI * 2); ctx.fill();
+          }
+
+          // Vertical holes
+          const ny = Math.max(1, Math.round(dh / step));
+          const dy = dh / ny;
+          for (let i = 1; i < ny; i++) {
+            const ty = -dh / 2 + i * dy;
+            ctx.beginPath(); ctx.arc(-dw / 2, ty, r, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(dw / 2, ty, r, 0, Math.PI * 2); ctx.fill();
+          }
+
+          // Photo with 12% inset (calculated in px above)
+          ctx.save();
+          roundedRectPath(ctx, px, py, pw, ph, br);
+          ctx.clip();
+          ctx.drawImage(img, sx, sy, sw, sh, px, py, pw, ph);
+          ctx.restore();
+        } else {
+          // Default (no frame)
+          roundedRectPath(ctx, -dw / 2, -dh / 2, dw, dh, br);
+          ctx.clip();
+          ctx.drawImage(img, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+        }
+
         ctx.restore();
         resolve();
       };
       img.onerror = () => resolve();
+      img.crossOrigin = "anonymous";
       img.src = m.src;
     });
   }
@@ -158,12 +272,13 @@ async function overdrawStickers(
   stickers: import("@/lib/types").Sticker[],
   pageIndex: number,
   scale: number,
-  containerW: number = PAGE_W
+  containerW: number = PAGE_W,
+  isSpread: boolean = false
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const pageStickers = stickers
-    .filter((s) => s.pageIndex === pageIndex)
+    .filter((s) => s.pageIndex === pageIndex || (isSpread && s.pageIndex === pageIndex + 1))
     .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
@@ -172,52 +287,41 @@ async function overdrawStickers(
       const img = new Image();
       img.onload = () => {
         if (img.naturalWidth === 0 || img.naturalHeight === 0) { resolve(); return; }
-        
         const sScale = s.scale ?? 1;
         const stickerW = s.width * sScale;
         const stickerH = s.height * sScale;
-
-        // Proportional scaling (contain): fit the image inside the container without stretching
         const imgAspect = img.naturalWidth / img.naturalHeight;
         const containerAspect = s.width / s.height;
-
         let drawW, drawH;
         if (imgAspect > containerAspect) {
-          // Image is wider than container aspect — fix width, scale height
           drawW = stickerW;
           drawH = stickerW / imgAspect;
         } else {
-          // Image is taller than container aspect — fix height, scale width
           drawH = stickerH;
           drawW = stickerH * imgAspect;
         }
-
-        // Center of the sticker in page coords
         const cx = (s.x * containerW + s.width / 2) * scale;
         const cy = (s.y * PAGE_H + s.height / 2) * scale;
         const dw = drawW * scale;
         const dh = drawH * scale;
         const rad = (s.rotation * Math.PI) / 180;
-
         ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // reset any lingering html2canvas transform
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
         ctx.translate(cx, cy);
         ctx.rotate(rad);
-        // Draw centered at the pivot point
         ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
         ctx.restore();
         resolve();
       };
       img.onerror = () => resolve();
+      img.crossOrigin = "anonymous";
       img.src = s.dataUrl;
     });
   }
 }
 
-// Template 5 full-page export: correct z-order + high-quality images
-// Pipeline: white base → moodboard images (high-q) → stickers (high-q) → transparent DOM overlay (texts + drawings only)
 async function exportTemplate6Spread(
   el: HTMLElement,
   html2canvasFn: (el: HTMLElement, opts: object) => Promise<HTMLCanvasElement>,
@@ -229,23 +333,25 @@ async function exportTemplate6Spread(
 ): Promise<HTMLCanvasElement> {
   const W = Math.round(PAGE_W * 2 * scale);
   const H = Math.round(PAGE_H * scale);
-
   const finalCanvas = document.createElement("canvas");
   finalCanvas.width = W;
   finalCanvas.height = H;
   const finalCtx = finalCanvas.getContext("2d")!;
   finalCtx.fillStyle = "#ffffff";
   finalCtx.fillRect(0, 0, W, H);
-
-  await overdrawMoodboardImages(finalCanvas, moodboardImages, albumId, pageIndex, scale);
-  await overdrawStickers(finalCanvas, stickers, pageIndex, scale, PAGE_W * 2);
-
+  await overdrawMoodboardImages(finalCanvas, moodboardImages, albumId, pageIndex, scale, true);
+  await overdrawStickers(finalCanvas, stickers, pageIndex, scale, PAGE_W * 2, true);
+  // 3. Transparent DOM overlay — ONLY texts + drawings (hide images, stickers, bg)
+  const bgImgEl = el.querySelector('img[alt=""]') as HTMLElement | null;
   const stickerDivs = Array.from(el.querySelectorAll("[data-sticker]")) as HTMLElement[];
   const mbDivs = Array.from(el.querySelectorAll("[data-mbimage]")) as HTMLElement[];
   const savedElBg = el.style.background;
+  const savedBgVis = bgImgEl ? bgImgEl.style.visibility : "";
   const savedStickerVis = stickerDivs.map((d) => d.style.visibility);
   const savedMbVis = mbDivs.map((d) => d.style.visibility);
+
   el.style.background = "transparent";
+  if (bgImgEl) bgImgEl.style.visibility = "hidden";
   stickerDivs.forEach((d) => { d.style.visibility = "hidden"; });
   mbDivs.forEach((d) => { d.style.visibility = "hidden"; });
 
@@ -263,10 +369,10 @@ async function exportTemplate6Spread(
     });
   } finally {
     el.style.background = savedElBg;
+    if (bgImgEl) bgImgEl.style.visibility = savedBgVis;
     stickerDivs.forEach((d, i) => { d.style.visibility = savedStickerVis[i]; });
     mbDivs.forEach((d, i) => { d.style.visibility = savedMbVis[i]; });
   }
-
   if (overlayCanvas) finalCtx.drawImage(overlayCanvas, 0, 0);
   return finalCanvas;
 }
@@ -282,39 +388,28 @@ async function exportTemplate5Page(
 ): Promise<HTMLCanvasElement> {
   const W = Math.round(PAGE_W * scale);
   const H = Math.round(PAGE_H * scale);
-
-  // 1. White canvas — AlbumPage template 5 always has white background
   const finalCanvas = document.createElement("canvas");
   finalCanvas.width = W;
   finalCanvas.height = H;
   const finalCtx = finalCanvas.getContext("2d")!;
   finalCtx.fillStyle = "#ffffff";
   finalCtx.fillRect(0, 0, W, H);
-
-  // 2. Moodboard images at full native quality (sorted by zIndex)
   await overdrawMoodboardImages(finalCanvas, moodboardImages, albumId, pageIndex, scale);
-
-  // 3. Stickers above images (high quality)
   await overdrawStickers(finalCanvas, stickers, pageIndex, scale);
-
-  // 4. Transparent DOM overlay — ONLY texts + drawings (hide images, stickers, bg)
   const albumPageEl = el.querySelector(".album-page") as HTMLElement | null;
   const bgImgEl = el.querySelector('img[alt=""]') as HTMLElement | null;
   const mbDivs = Array.from(el.querySelectorAll("[data-mbimage]")) as HTMLElement[];
   const stickerDivs = Array.from(el.querySelectorAll("[data-sticker]")) as HTMLElement[];
-
   const savedElBg = el.style.background;
   const savedAlbumBg = albumPageEl ? albumPageEl.style.background : "";
   const savedBgVis = bgImgEl ? bgImgEl.style.visibility : "";
   const savedMbVis = mbDivs.map((d) => d.style.visibility);
   const savedStickerVis = stickerDivs.map((d) => d.style.visibility);
-
   el.style.background = "transparent";
   if (albumPageEl) albumPageEl.style.background = "transparent";
   if (bgImgEl) bgImgEl.style.visibility = "hidden";
   mbDivs.forEach((d) => { d.style.visibility = "hidden"; });
   stickerDivs.forEach((d) => { d.style.visibility = "hidden"; });
-
   let overlayCanvas: HTMLCanvasElement | null = null;
   try {
     overlayCanvas = await html2canvasFn(el, {
@@ -334,14 +429,10 @@ async function exportTemplate5Page(
     mbDivs.forEach((d, i) => { d.style.visibility = savedMbVis[i]; });
     stickerDivs.forEach((d, i) => { d.style.visibility = savedStickerVis[i]; });
   }
-
-  // 5. Composite overlay (texts + drawings) on top of images and stickers
   if (overlayCanvas) finalCtx.drawImage(overlayCanvas, 0, 0);
-
   return finalCanvas;
 }
 
-// After html2canvas captures the page, overdraw image slots directly at full quality
 async function overdrawSlotImages(
   canvas: HTMLCanvasElement,
   pageImages: Record<number, string>,
@@ -349,12 +440,12 @@ async function overdrawSlotImages(
   isLeft: boolean,
   scale: number
 ) {
-  if (templateId === 5) return; // moodboard — images are free-positioned, html2canvas handles them
+  if (templateId === 5) return;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const slots = getSlotDefs(templateId, isLeft);
   ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0); // reset any lingering html2canvas transform
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
@@ -365,7 +456,6 @@ async function overdrawSlotImages(
     const dy = (GRID_Y + slot.y + INNER_PAD_Y) * scale;
     const dw = (slot.w - INNER_PAD_X * 2) * scale;
     const dh = (slot.h - INNER_PAD_Y * 2) * scale;
-    // Apply 6px base border-radius scaled up
     await drawCoverImage(ctx, src, dx, dy, dw, dh, 6 * scale);
   }
   ctx.restore();
@@ -386,10 +476,8 @@ export default function ShareModal({
   onClose,
   isMobile: isMobileProp = false,
 }: ShareModalProps) {
-  // For template 6: export only even page indices (each = one full spread)
   const exportPageIndices = Array.from({ length: totalPages }, (_, i) => i)
     .filter(i => !(getPageTemplateId(i) === 6 && i % 2 === 1));
-
   const [mode, setMode] = useState<Mode>("choose");
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
@@ -400,7 +488,6 @@ export default function ShareModal({
   const [mounted, setMounted] = useState(false);
   const isMobile = isMobileProp;
   const [thumbnails, setThumbnails] = useState<Record<number, string>>(() => {
-    // Initialise from cache so previous thumbnails show instantly
     const cached: Record<number, string> = {};
     for (const key of Object.keys(thumbCache)) {
       const [aid, pidx] = key.split(":");
@@ -416,7 +503,6 @@ export default function ShareModal({
     setMounted(true);
   }, []);
 
-  // Returns true if a page has any user-added content worth previewing
   const pageHasContent = useCallback((pageIdx: number): boolean => {
     const pageImgs = getPageImages(pageIdx);
     if (Object.values(pageImgs).some(Boolean)) return true;
@@ -427,21 +513,18 @@ export default function ShareModal({
     return false;
   }, [getPageImages, stickers, moodboardImages, moodboardTexts, drawings]);
 
-  // Generate thumbnails only for pages with content, skip already-cached ones
   const generateThumbnails = useCallback(async () => {
     if (thumbsGenerating) return;
     const container = hiddenRef.current;
     if (!container) return;
     setThumbsGenerating(true);
     thumbCancelRef.current = false;
-    // @ts-ignore
     const { default: html2canvas }: any = await import("html2canvas");
     for (const i of exportPageIndices) {
       if (thumbCancelRef.current) break;
-      if (!pageHasContent(i)) continue;           // skip empty pages
+      if (!pageHasContent(i)) continue;
       const cacheKey = `${albumId}:${i}`;
       if (thumbCache[cacheKey]) {
-        // Already cached — show immediately, skip re-capture
         setThumbnails((prev) => prev[i] ? prev : { ...prev, [i]: thumbCache[cacheKey] });
         continue;
       }
@@ -459,8 +542,8 @@ export default function ShareModal({
         const dataUrl = canvas.toDataURL("image/jpeg", 0.5);
         thumbCache[cacheKey] = dataUrl;
         setThumbnails((prev) => ({ ...prev, [i]: dataUrl }));
-      } catch { /* skip */ }
-      await new Promise((r) => setTimeout(r, 0)); // yield to browser
+      } catch { }
+      await new Promise((r) => setTimeout(r, 0));
     }
     setThumbsGenerating(false);
   }, [totalPages, thumbsGenerating, pageHasContent, albumId]);
@@ -478,15 +561,12 @@ export default function ShareModal({
 
   const goToPages = () => {
     setMode("pages");
-    // generate thumbnails after hidden pages have had a tick to settle
     setTimeout(() => generateThumbnails(), 100);
   };
 
-  // ── Download selected pages as PNG ────────────────────────────────────────
   const handleDownloadPages = useCallback(async () => {
     if (selectedPages.size === 0) return;
     setIsExporting(true);
-    // @ts-ignore
     const { default: html2canvas }: any = await import("html2canvas");
     const pages = Array.from(selectedPages).sort((a, b) => a - b);
     for (let i = 0; i < pages.length; i++) {
@@ -496,27 +576,22 @@ export default function ShareModal({
       if (!el) continue;
       await new Promise((r) => setTimeout(r, 80));
       const tpl = getPageTemplateId(pageIdx);
-      const isT5 = tpl === 5;
-      const isT6 = tpl === 6;
-      const PNG_SCALE = (isT5 || isT6) ? Math.max(6, Math.round(window.devicePixelRatio * 2)) : 6;
+      const PNG_SCALE = (tpl === 5 || tpl === 6) ? Math.max(6, Math.round(window.devicePixelRatio * 2)) : 6;
       let canvas: HTMLCanvasElement;
-      if (isT5) {
-        canvas = await exportTemplate5Page(el, html2canvas, moodboardImages, stickers, albumId, pageIdx, PNG_SCALE);
-      } else if (isT6) {
+      if (tpl === 6) {
         canvas = await exportTemplate6Spread(el, html2canvas, moodboardImages, stickers, albumId, pageIdx, PNG_SCALE);
+      } else if (tpl === 5) {
+        canvas = await exportTemplate5Page(el, html2canvas, moodboardImages, stickers, albumId, pageIdx, PNG_SCALE);
       } else {
         const stickerDivs = Array.from(el.querySelectorAll("[data-sticker]")) as HTMLElement[];
         const slotImages = Array.from(el.querySelectorAll('[data-slot="true"] img')) as HTMLElement[];
         const exportHideDivs = Array.from(el.querySelectorAll('[data-export-hide="true"]')) as HTMLElement[];
-        
         const savedStickerVis = stickerDivs.map((d) => d.style.visibility);
         const savedSlotVis = slotImages.map((d) => d.style.visibility);
         const savedHideVis = exportHideDivs.map((d) => d.style.visibility);
-
         stickerDivs.forEach((d) => { d.style.visibility = "hidden"; });
         slotImages.forEach((d) => { d.style.visibility = "hidden"; });
         exportHideDivs.forEach((d) => { d.style.visibility = "hidden"; });
-
         try {
           canvas = await html2canvas(el, {
             scale: PNG_SCALE,
@@ -547,58 +622,41 @@ export default function ShareModal({
     onClose();
   }, [selectedPages, albumName, onClose, stickers, moodboardImages, albumId, getPageImages, getPageTemplateId]);
 
-  // ── Download whole album as PDF ───────────────────────────────────────────
   const handleDownloadPDF = useCallback(async () => {
     setIsExporting(true);
-    setExportProgress(0); // Explicitly start from the left end
+    setExportProgress(0);
     setProgress("Loading libraries…");
     const [html2canvasMod, jsPDFMod]: any[] = await Promise.all([
-      // @ts-ignore
       import("html2canvas"),
-      // @ts-ignore
       import("jspdf"),
     ]);
     const html2canvas = html2canvasMod.default;
     const jsPDF = jsPDFMod.default;
-
     const firstPageIsT6 = exportPageIndices.length > 0 && getPageTemplateId(exportPageIndices[0]) === 6;
     const pdf = new jsPDF({ orientation: firstPageIsT6 ? "landscape" : "portrait", unit: "px", format: firstPageIsT6 ? [PAGE_W * 2, PAGE_H] : [PAGE_W, PAGE_H] });
-
-    // Wait for 2 animation frames — guarantees DOM paint before we read/write progress
     const waitForPaint = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-
-    // Snap to 0 instantly
     setExportTransitionDuration(0);
     setExportTransitionEase("linear");
     setExportProgress(0);
     await waitForPaint();
-
     for (let loopIdx = 0; loopIdx < exportPageIndices.length; loopIdx++) {
       const i = exportPageIndices[loopIdx];
-      // Update status and snap bar to exact page-start % before async work
       setProgress(`Capturing page ${loopIdx + 1} of ${exportPageIndices.length}…`);
       setExportTransitionDuration(0);
       setExportProgress((loopIdx / exportPageIndices.length) * 100);
-      // Micro-delay: lets React flush state and browser repaint before blocking
       await new Promise((r) => setTimeout(r, 0));
-
       const el = hiddenRef.current?.querySelector(`[data-share-page="${i}"]`) as HTMLElement | null;
       if (!el) continue;
-
-      // Single-canvas pipeline — correct z-order: background → photos → stickers (always on top)
-      // Templates 1-4: scale 3 (old 363px images map ~1:1 to 369px slot — no upscale blur)
-      // Template 5: devicePixelRatio*2 (min 4) — moodboard needs highest quality
       const templateId = getPageTemplateId(i);
       const isT6pdf = templateId === 6;
       const PDF_SCALE = (templateId === 5 || isT6pdf)
         ? Math.max(6, Math.round(window.devicePixelRatio * 2))
         : 3;
       let pageCanvas: HTMLCanvasElement;
-      if (templateId === 5) {
-        // Template 5: proper z-order pipeline (images → overlay → stickers)
-        pageCanvas = await exportTemplate5Page(el, html2canvas, moodboardImages, stickers, albumId, i, PDF_SCALE);
-      } else if (isT6pdf) {
+      if (templateId === 6) {
         pageCanvas = await exportTemplate6Spread(el, html2canvas, moodboardImages, stickers, albumId, i, PDF_SCALE);
+      } else if (templateId === 5) {
+        pageCanvas = await exportTemplate5Page(el, html2canvas, moodboardImages, stickers, albumId, i, PDF_SCALE);
       } else {
         const stickerDivs = Array.from(el.querySelectorAll("[data-sticker]")) as HTMLElement[];
         const slotImages = Array.from(el.querySelectorAll('[data-slot="true"] img')) as HTMLElement[];
@@ -668,64 +726,64 @@ export default function ShareModal({
         const isT6spread = getPageTemplateId(pageIdx) === 6;
         const spreadW = isT6spread ? PAGE_W * 2 : PAGE_W;
         return (
-        <div
-          key={pageIdx}
-          data-share-page={pageIdx}
-          style={{ width: spreadW, height: PAGE_H, position: "relative", overflow: "hidden", background: "#ffffff", marginBottom: 4 }}
-        >
-          {bgImageUrl && (
-            <img src={bgImageUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 }} crossOrigin="anonymous" />
-          )}
-          {isT6spread ? (
-            <div style={{ position: "absolute", inset: 0, zIndex: 1 }}>
-              <div style={{ position: "absolute", inset: 0, zIndex: 45, pointerEvents: "none" }}>
-                <MoodboardImageLayer albumId={albumId} images={moodboardImages} pageIndex={pageIdx}
-                  containerWidth={PAGE_W * 2} containerHeight={PAGE_H} onImagesChange={() => {}} forExport={true} />
-              </div>
-              <div style={{ position: "absolute", inset: 0, zIndex: 55, pointerEvents: "none" }}>
-                <MoodboardTextLayer albumId={albumId} pageIndex={pageIdx} texts={moodboardTexts}
-                  containerWidth={PAGE_W * 2} containerHeight={PAGE_H} onTextsChange={() => {}} />
-              </div>
-              {drawings[pageIdx] && (
-                <div style={{ position: "absolute", inset: 0, zIndex: 58, pointerEvents: "none" }}>
-                  <img src={drawings[pageIdx]} alt="drawing" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+          <div
+            key={pageIdx}
+            data-share-page={pageIdx}
+            style={{ width: spreadW, height: PAGE_H, position: "relative", overflow: "hidden", background: "#ffffff", marginBottom: 4 }}
+          >
+            {bgImageUrl && (
+              <img src={bgImageUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 }} crossOrigin="anonymous" />
+            )}
+            {isT6spread ? (
+              <div style={{ position: "absolute", inset: 0, zIndex: 1 }}>
+                <div style={{ position: "absolute", inset: 0, zIndex: 45, pointerEvents: "none" }}>
+                  <MoodboardImageLayer albumId={albumId} images={moodboardImages} pageIndex={pageIdx}
+                    containerWidth={PAGE_W * 2} containerHeight={PAGE_H} onImagesChange={() => { }} forExport={true} />
                 </div>
-              )}
-              <div style={{ position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none" }}>
-                <StickerLayer stickers={stickers} pageIndex={pageIdx}
-                  containerWidth={PAGE_W * 2} containerHeight={PAGE_H} onStickersChange={() => {}} forExport={true} />
+                <div style={{ position: "absolute", inset: 0, zIndex: 55, pointerEvents: "none" }}>
+                  <MoodboardTextLayer albumId={albumId} pageIndex={pageIdx} texts={moodboardTexts}
+                    containerWidth={PAGE_W * 2} containerHeight={PAGE_H} onTextsChange={() => { }} />
+                </div>
+                {drawings[pageIdx] && (
+                  <div style={{ position: "absolute", inset: 0, zIndex: 58, pointerEvents: "none" }}>
+                    <img src={drawings[pageIdx]} alt="drawing" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                  </div>
+                )}
+                <div style={{ position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none" }}>
+                  <StickerLayer stickers={stickers} pageIndex={pageIdx}
+                    containerWidth={PAGE_W * 2} containerHeight={PAGE_H} onStickersChange={() => { }} forExport={true} />
+                </div>
               </div>
-            </div>
-          ) : (
-          <div style={{ position: "absolute", inset: 0, zIndex: 1 }}>
-            <AlbumPage
-              albumId={albumId}
-              pageIndex={pageIdx}
-              isLeft={pageIdx % 2 === 0}
-              images={getPageImages(pageIdx)}
-              stickers={stickers}
-              onSlotClick={() => {}}
-              onSlotDrop={() => {}}
-              onStickersChange={() => {}}
-              onStickerPanelOpen={() => {}}
-              pageNumber={pageIdx + 1}
-              templateId={getPageTemplateId(pageIdx)}
-              moodboardImages={moodboardImages}
-              onMoodboardImagesChange={() => {}}
-              moodboardTexts={moodboardTexts}
-              onMoodboardTextsChange={() => {}}
-              bgImageUrl={bgImageUrl}
-              drawings={drawings}
-              onDrawingSave={() => {}}
-              isDrawingActive={false}
-              onStartDrawing={() => {}}
-              onStopDrawing={() => {}}
-              hideUI={true}
-              forExport={true}
-            />
+            ) : (
+              <div style={{ position: "absolute", inset: 0, zIndex: 1 }}>
+                <AlbumPage
+                  albumId={albumId}
+                  pageIndex={pageIdx}
+                  isLeft={pageIdx % 2 === 0}
+                  images={getPageImages(pageIdx)}
+                  stickers={stickers}
+                  onSlotClick={() => { }}
+                  onSlotDrop={() => { }}
+                  onStickersChange={() => { }}
+                  onStickerPanelOpen={() => { }}
+                  pageNumber={pageIdx + 1}
+                  templateId={getPageTemplateId(pageIdx)}
+                  moodboardImages={moodboardImages}
+                  onMoodboardImagesChange={() => { }}
+                  moodboardTexts={moodboardTexts}
+                  onMoodboardTextsChange={() => { }}
+                  bgImageUrl={bgImageUrl}
+                  drawings={drawings}
+                  onDrawingSave={() => { }}
+                  isDrawingActive={false}
+                  onStartDrawing={() => { }}
+                  onStopDrawing={() => { }}
+                  hideUI={true}
+                  forExport={true}
+                />
+              </div>
+            )}
           </div>
-          )}
-        </div>
         );
       })}
     </div>,

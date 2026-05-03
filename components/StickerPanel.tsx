@@ -138,7 +138,10 @@ export default function StickerPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<ProcessingStep>("idle");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [noBgUrl, setNoBgUrl] = useState<string | null>(null);
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
+  const [outlineSize, setOutlineSize] = useState(7);
+  const [isProcessingOutline, setIsProcessingOutline] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [activeTab, setActiveTab] = useState<"stickers" | "washi">("stickers");
   const [isMobileInternal, setIsMobileInternal] = useState(false);
@@ -286,7 +289,8 @@ export default function StickerPanel({
         if (transparent) {
           setStatusMsg("Applying sticker outline…");
           setStep("processing");
-          const stroked = await applyWhiteStroke(resized);
+          setNoBgUrl(resized);
+          const stroked = await applyWhiteStroke(resized, outlineSize);
           const final = await compressImage(stroked);
           if (!final) { setStep("idle"); return; }
           setProcessedUrl(final);
@@ -302,33 +306,55 @@ export default function StickerPanel({
     []
   );
 
+  const reprocessOutline = useCallback(async (size: number) => {
+    const base = noBgUrl || previewUrl;
+    if (!base) return;
+    setIsProcessingOutline(true);
+    const stroked = await applyWhiteStroke(base, size);
+    const final = await compressImage(stroked);
+    if (final) setProcessedUrl(final);
+    setIsProcessingOutline(false);
+  }, [previewUrl, noBgUrl]);
+
+  useEffect(() => {
+    if (step === "done" && (noBgUrl || previewUrl)) {
+      const timer = setTimeout(() => {
+        reprocessOutline(outlineSize);
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [outlineSize, previewUrl, noBgUrl, step, reprocessOutline]);
+
   const handleConvert = useCallback(async () => {
     if (!previewUrl) return;
     setStep("processing");
     setStatusMsg("Removing background…");
     const noBg = await removeBackground(previewUrl);
+    setNoBgUrl(noBg);
     setStatusMsg("Applying sticker outline…");
-    const stroked = await applyWhiteStroke(noBg);
+    const stroked = await applyWhiteStroke(noBg, outlineSize);
     const final = await compressImage(stroked);
     setProcessedUrl(final);
     setStep("done");
     setStatusMsg("Done!");
-  }, [previewUrl]);
+  }, [previewUrl, outlineSize]);
 
   const handleSkipConvert = useCallback(async () => {
     if (!previewUrl) return;
+    setNoBgUrl(null);
     setStep("processing");
     setStatusMsg("Applying sticker outline…");
-    const stroked = await applyWhiteStroke(previewUrl);
+    const stroked = await applyWhiteStroke(previewUrl, outlineSize);
     const final = await compressImage(stroked);
     setProcessedUrl(final);
     setStep("done");
     setStatusMsg("Done!");
-  }, [previewUrl]);
+  }, [previewUrl, outlineSize]);
 
   const handleCancel = () => {
     setStep("idle");
     setPreviewUrl(null);
+    setNoBgUrl(null);
     setProcessedUrl(null);
     setStatusMsg("");
   };
@@ -362,289 +388,312 @@ export default function StickerPanel({
             alignItems: "flex-end",
             justifyContent: "center",
           } : { display: "contents" }}>
-          <motion.div
-            className={isMobile ? "flex flex-col rounded-2xl overflow-hidden" : "fixed z-50 flex flex-col rounded-2xl overflow-hidden"}
-            style={isMobile ? {
-              position: "relative",
-              marginBottom: 80,
-              width: 320,
-              maxHeight: "70vh",
-              pointerEvents: "auto",
-              background: "rgba(255,255,255,0.97)",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(0,0,0,0.06)",
-            } : {
-              bottom: 80,
-              left: "50%",
-              width: 320,
-              maxHeight: "70vh",
-              background: "rgba(255,255,255,0.97)",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(0,0,0,0.06)",
-            }}
-            initial={isMobile ? { opacity: 0, scale: 0.95 } : { opacity: 0, y: 16, x: "-50%", scale: 0.95 }}
-            animate={isMobile ? { opacity: 1, scale: 1 } : { opacity: 1, y: 0, x: "-50%", scale: 1 }}
-            exit={isMobile ? { opacity: 0, scale: 0.95 } : { opacity: 0, y: 10, x: "-50%", scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 320, damping: 28 }}
-          >
-            {/* Header */}
-            <div
-              className="flex items-center justify-between px-5 py-4"
-              style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}
+            <motion.div
+              className={isMobile ? "flex flex-col rounded-2xl overflow-hidden" : "fixed z-50 flex flex-col rounded-2xl overflow-hidden"}
+              style={isMobile ? {
+                position: "relative",
+                marginBottom: 80,
+                width: 320,
+                maxHeight: "70vh",
+                pointerEvents: "auto",
+                background: "rgba(255,255,255,0.97)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)",
+                border: "1px solid rgba(0,0,0,0.06)",
+              } : {
+                bottom: 80,
+                left: "50%",
+                width: 320,
+                maxHeight: "70vh",
+                background: "rgba(255,255,255,0.97)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)",
+                border: "1px solid rgba(0,0,0,0.06)",
+              }}
+              initial={isMobile ? { opacity: 0, scale: 0.95 } : { opacity: 0, y: 16, x: "-50%", scale: 0.95 }}
+              animate={isMobile ? { opacity: 1, scale: 1 } : { opacity: 1, y: 0, x: "-50%", scale: 1 }}
+              exit={isMobile ? { opacity: 0, scale: 0.95 } : { opacity: 0, y: 10, x: "-50%", scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 320, damping: 28 }}
             >
-              <div>
-                <h3 className="font-sans font-semibold text-sm" style={{ color: "#292524" }}>
-                  Sticker Library
-                </h3>
-                <p className="font-sans text-xs mt-0.5" style={{ color: "#A8A29E" }}>
-                  {libraryStickers.length} sticker{libraryStickers.length !== 1 ? "s" : ""} saved
-                </p>
-              </div>
-              <button
-                onClick={() => { handleCancel(); onClose(); }}
-                className="w-7 h-7 rounded-full flex items-center justify-center transition-colors"
-                style={{ color: "#A8A29E" }}
+              {/* Header */}
+              <div
+                className="flex items-center justify-between px-5 py-4"
+                style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}
               >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
+                <div>
+                  <h3 className="font-sans font-semibold text-sm" style={{ color: "#292524" }}>
+                    Sticker Library
+                  </h3>
+                  <p className="font-sans text-xs mt-0.5" style={{ color: "#A8A29E" }}>
+                    {libraryStickers.length} sticker{libraryStickers.length !== 1 ? "s" : ""} saved
+                  </p>
+                </div>
+                <button
+                  onClick={() => { handleCancel(); onClose(); }}
+                  className="w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+                  style={{ color: "#A8A29E" }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
 
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-4" style={{ minHeight: 0 }}>
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-4" style={{ minHeight: 0 }}>
 
-              {/* ── Processing flow ── */}
-              {step !== "idle" && (
-                <div className="mb-4">
-                  <div
-                    className="rounded-xl p-4 flex flex-col items-center gap-3"
-                    style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}
-                  >
-                    <div className="flex items-center gap-3">
-                      {previewUrl && (
-                        <div className="flex flex-col items-center gap-1">
-                          <img
-                            src={previewUrl}
-                            alt="original"
-                            className="rounded-lg object-contain"
-                            style={{ width: 80, height: 80, background: "#f5f5f5", border: "1px solid rgba(0,0,0,0.08)" }}
-                          />
-                          <span className="text-xs font-sans" style={{ color: "#A8A29E" }}>Original</span>
-                        </div>
-                      )}
-                      {processedUrl && (
-                        <>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                            stroke="#A8A29E" strokeWidth="2" strokeLinecap="round">
-                            <polyline points="9 18 15 12 9 6" />
-                          </svg>
+                {/* ── Processing flow ── */}
+                {step !== "idle" && (
+                  <div className="mb-4">
+                    <div
+                      className="rounded-xl p-4 flex flex-col items-center gap-3"
+                      style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}
+                    >
+                      <div className="flex items-center gap-3">
+                        {previewUrl && (
                           <div className="flex flex-col items-center gap-1">
                             <img
-                              src={processedUrl}
-                              alt="sticker"
+                              src={previewUrl}
+                              alt="original"
                               className="rounded-lg object-contain"
-                              style={{
-                                width: 80, height: 80,
-                                background: "repeating-conic-gradient(#e5e5e5 0% 25%, white 0% 50%) 0 0 / 10px 10px",
-                                border: "1px solid rgba(0,0,0,0.08)"
-                              }}
+                              style={{ width: 80, height: 80, background: "#f5f5f5", border: "1px solid rgba(0,0,0,0.08)" }}
                             />
-                            <span className="text-xs font-sans" style={{ color: "#A8A29E" }}>Sticker</span>
+                            <span className="text-xs font-sans" style={{ color: "#A8A29E" }}>Original</span>
                           </div>
-                        </>
+                        )}
+                        {processedUrl && (
+                          <>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                              stroke="#A8A29E" strokeWidth="2" strokeLinecap="round">
+                              <polyline points="9 18 15 12 9 6" />
+                            </svg>
+                            <div className="flex flex-col items-center gap-1">
+                              <img
+                                src={processedUrl}
+                                alt="sticker"
+                                className="rounded-lg object-contain"
+                                style={{
+                                  width: 80, height: 80,
+                                  background: "repeating-conic-gradient(#e5e5e5 0% 25%, white 0% 50%) 0 0 / 10px 10px",
+                                  border: "1px solid rgba(0,0,0,0.08)"
+                                }}
+                              />
+                              <span className="text-xs font-sans" style={{ color: "#A8A29E" }}>Sticker</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <p className="text-xs font-sans text-center" style={{ color: "#79716B" }}>
+                        {statusMsg}
+                      </p>
+
+                      {(step === "checking" || step === "processing" || isProcessingOutline) && (
+                        <motion.div
+                          className="w-5 h-5 rounded-full border-2 border-stone-200 border-t-stone-500"
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+                        />
+                      )}
+
+                      {step === "done" && (
+                        <div className="w-full px-2 mb-2">
+                          <div className="flex justify-between items-center mb-1.5">
+                            <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Outline Thickness</span>
+                            <span className="text-[10px] font-bold text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded">{outlineSize}px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="25"
+                            value={outlineSize}
+                            onChange={(e) => setOutlineSize(Number(e.target.value))}
+                            className="w-full accent-stone-800 cursor-pointer"
+                            style={{
+                              height: 6,
+                              background: "#E7E5E4",
+                              borderRadius: 3,
+                              appearance: "none",
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {step === "needs-removal" && (
+                        <div className="flex flex-col gap-2 w-full">
+                          <button
+                            onClick={handleConvert}
+                            className="w-full py-2 rounded-xl text-sm font-semibold font-sans"
+                            style={{ background: "#292524", color: "white" }}
+                          >
+                            ✨ Auto-remove background
+                          </button>
+                          <button
+                            onClick={handleSkipConvert}
+                            className="w-full py-2 rounded-xl text-sm font-sans"
+                            style={{ background: "rgba(0,0,0,0.05)", color: "#57534E" }}
+                          >
+                            Use as-is (add outline only)
+                          </button>
+                          <button onClick={handleCancel} className="w-full py-1.5 text-xs font-sans" style={{ color: "#A8A29E" }}>
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+
+                      {step === "done" && processedUrl && (
+                        <div className="flex gap-2 w-full">
+                          <button
+                            onClick={handleCancel}
+                            className="flex-1 py-2 rounded-xl text-sm font-sans"
+                            style={{ background: "rgba(0,0,0,0.05)", color: "#57534E" }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => placeSticker(processedUrl, true)}
+                            className="flex-1 py-2 rounded-xl text-sm font-semibold font-sans"
+                            style={{ background: "#292524", color: "white" }}
+                          >
+                            Place Sticker
+                          </button>
+                        </div>
                       )}
                     </div>
+                  </div>
+                )}
 
-                    <p className="text-xs font-sans text-center" style={{ color: "#79716B" }}>
-                      {statusMsg}
+                {/* ── Tabs (Moodboard only) ── */}
+                {step === "idle" && showWashiTab && (
+                  <div
+                    className="mb-3 p-1 rounded-xl grid grid-cols-2 gap-1"
+                    style={{ background: "rgba(0,0,0,0.04)" }}
+                  >
+                    <button
+                      onClick={() => setActiveTab("stickers")}
+                      className="py-2 rounded-lg text-xs font-sans font-medium"
+                      style={{
+                        background: activeTab === "stickers" ? "#292524" : "transparent",
+                        color: activeTab === "stickers" ? "#fff" : "#57534E",
+                      }}
+                    >
+                      Stickers
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("washi")}
+                      className="py-2 rounded-lg text-xs font-sans font-medium"
+                      style={{
+                        background: activeTab === "washi" ? "#292524" : "transparent",
+                        color: activeTab === "washi" ? "#fff" : "#57534E",
+                      }}
+                    >
+                      Washi
+                    </button>
+                  </div>
+                )}
+
+                {/* ── Upload button ── */}
+                {step === "idle" && activeTab === "stickers" && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl mb-4 font-sans text-sm font-medium"
+                    style={{
+                      background: "rgba(0,0,0,0.04)",
+                      border: "1.5px dashed rgba(0,0,0,0.12)",
+                      color: "#57534E",
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    Upload New Sticker
+                  </button>
+                )}
+
+                {/* ── Library grid ── */}
+                {activeTab === "stickers" && libraryStickers.length === 0 && step === "idle" ? (
+                  <div className="text-center py-6">
+                    <div className="text-3xl mb-2">🌟</div>
+                    <p className="text-xs font-sans" style={{ color: "#A8A29E" }}>
+                      No stickers yet. Upload one above!
                     </p>
-
-                    {(step === "checking" || step === "processing") && (
-                      <motion.div
-                        className="w-5 h-5 rounded-full border-2 border-stone-200 border-t-stone-500"
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
-                      />
-                    )}
-
-                    {step === "needs-removal" && (
-                      <div className="flex flex-col gap-2 w-full">
-                        <button
-                          onClick={handleConvert}
-                          className="w-full py-2 rounded-xl text-sm font-semibold font-sans"
-                          style={{ background: "#292524", color: "white" }}
-                        >
-                          ✨ Auto-remove background
-                        </button>
-                        <button
-                          onClick={handleSkipConvert}
-                          className="w-full py-2 rounded-xl text-sm font-sans"
-                          style={{ background: "rgba(0,0,0,0.05)", color: "#57534E" }}
-                        >
-                          Use as-is (add outline only)
-                        </button>
-                        <button onClick={handleCancel} className="w-full py-1.5 text-xs font-sans" style={{ color: "#A8A29E" }}>
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-
-                    {step === "done" && processedUrl && (
-                      <div className="flex gap-2 w-full">
-                        <button
-                          onClick={handleCancel}
-                          className="flex-1 py-2 rounded-xl text-sm font-sans"
-                          style={{ background: "rgba(0,0,0,0.05)", color: "#57534E" }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => placeSticker(processedUrl, true)}
-                          className="flex-1 py-2 rounded-xl text-sm font-semibold font-sans"
-                          style={{ background: "#292524", color: "white" }}
-                        >
-                          Place Sticker
-                        </button>
-                      </div>
-                    )}
                   </div>
-                </div>
-              )}
-
-              {/* ── Tabs (Moodboard only) ── */}
-              {step === "idle" && showWashiTab && (
-                <div
-                  className="mb-3 p-1 rounded-xl grid grid-cols-2 gap-1"
-                  style={{ background: "rgba(0,0,0,0.04)" }}
-                >
-                  <button
-                    onClick={() => setActiveTab("stickers")}
-                    className="py-2 rounded-lg text-xs font-sans font-medium"
-                    style={{
-                      background: activeTab === "stickers" ? "#292524" : "transparent",
-                      color: activeTab === "stickers" ? "#fff" : "#57534E",
-                    }}
-                  >
-                    Stickers
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("washi")}
-                    className="py-2 rounded-lg text-xs font-sans font-medium"
-                    style={{
-                      background: activeTab === "washi" ? "#292524" : "transparent",
-                      color: activeTab === "washi" ? "#fff" : "#57534E",
-                    }}
-                  >
-                    Washi
-                  </button>
-                </div>
-              )}
-
-              {/* ── Upload button ── */}
-              {step === "idle" && activeTab === "stickers" && (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl mb-4 font-sans text-sm font-medium"
-                  style={{
-                    background: "rgba(0,0,0,0.04)",
-                    border: "1.5px dashed rgba(0,0,0,0.12)",
-                    color: "#57534E",
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                  Upload New Sticker
-                </button>
-              )}
-
-              {/* ── Library grid ── */}
-              {activeTab === "stickers" && libraryStickers.length === 0 && step === "idle" ? (
-                <div className="text-center py-6">
-                  <div className="text-3xl mb-2">🌟</div>
-                  <p className="text-xs font-sans" style={{ color: "#A8A29E" }}>
-                    No stickers yet. Upload one above!
-                  </p>
-                </div>
-              ) : activeTab === "washi" && step === "idle" ? (
-                <>
-                  <p className="text-xs font-sans font-medium mb-2.5" style={{ color: "#A8A29E" }}>
-                    Tap to add tape
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {WASHI_TAPES.map((wt) => (
-                      <motion.button
-                        key={wt.id}
-                        onClick={() => placeSticker(wt.src, false)}
-                        className="w-full rounded-xl overflow-hidden flex items-center justify-center p-2"
-                        style={{
-                          background: "repeating-conic-gradient(#f0f0f0 0% 25%, white 0% 50%) 0 0 / 10px 10px",
-                          border: "1px solid rgba(0,0,0,0.08)",
-                          aspectRatio: "2.8 / 1",
-                        }}
-                        whileHover={{ scale: 1.04 }}
-                        whileTap={{ scale: 0.95 }}
-                      >
-                        <img
-                          src={wt.src}
-                          alt="washi tape"
-                          style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                          draggable={false}
-                          loading="lazy"
-                        />
-                      </motion.button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                step === "idle" && (
+                ) : activeTab === "washi" && step === "idle" ? (
                   <>
                     <p className="text-xs font-sans font-medium mb-2.5" style={{ color: "#A8A29E" }}>
-                      Tap to add · Long-press to remove
+                      Tap to add tape
                     </p>
-                    <div className="grid grid-cols-4 gap-2">
-                      {libraryStickers.map((ls) => (
-                        <div key={ls.id} className="relative group">
-                          <motion.button
-                            onClick={() => placeSticker(ls.src, false)}
-                            className="w-full aspect-square rounded-xl flex items-center justify-center overflow-hidden"
-                            style={{
-                              background: "repeating-conic-gradient(#f0f0f0 0% 25%, white 0% 50%) 0 0 / 10px 10px",
-                              border: "1px solid rgba(0,0,0,0.08)",
-                            }}
-                            whileHover={{ scale: 1.08 }}
-                            whileTap={{ scale: 0.93 }}
-                          >
-                            <img
-                              src={ls.src}
-                              alt="sticker"
-                              style={{ width: "80%", height: "80%", objectFit: "contain" }}
-                              draggable={false}
-                              loading="lazy"
-                            />
-                          </motion.button>
-                          {/* Delete button */}
-                          <motion.button
-                            onClick={(e) => handleDeleteLibrary(ls, e)}
-                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100"
-                            style={{ background: "#EF4444", color: "white", fontSize: 9, lineHeight: 1 }}
-                            whileTap={{ scale: 0.85 }}
-                            transition={{ duration: 0.15 }}
-                          >
-                            ✕
-                          </motion.button>
-                        </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {WASHI_TAPES.map((wt) => (
+                        <motion.button
+                          key={wt.id}
+                          onClick={() => placeSticker(wt.src, false)}
+                          className="w-full rounded-xl overflow-hidden flex items-center justify-center p-2"
+                          style={{
+                            background: "repeating-conic-gradient(#f0f0f0 0% 25%, white 0% 50%) 0 0 / 10px 10px",
+                            border: "1px solid rgba(0,0,0,0.08)",
+                            aspectRatio: "2.8 / 1",
+                          }}
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.95 }}
+                        >
+                          <img
+                            src={wt.src}
+                            alt="washi tape"
+                            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                            draggable={false}
+                            loading="lazy"
+                          />
+                        </motion.button>
                       ))}
                     </div>
                   </>
-                )
-              )}
-            </div>
-          </motion.div>
+                ) : (
+                  step === "idle" && (
+                    <>
+                      <p className="text-xs font-sans font-medium mb-2.5" style={{ color: "#A8A29E" }}>
+                        Tap to add · Long-press to remove
+                      </p>
+                      <div className="grid grid-cols-4 gap-2">
+                        {libraryStickers.map((ls) => (
+                          <div key={ls.id} className="relative group">
+                            <motion.button
+                              onClick={() => placeSticker(ls.src, false)}
+                              className="w-full aspect-square rounded-xl flex items-center justify-center overflow-hidden"
+                              style={{
+                                background: "repeating-conic-gradient(#f0f0f0 0% 25%, white 0% 50%) 0 0 / 10px 10px",
+                                border: "1px solid rgba(0,0,0,0.08)",
+                              }}
+                              whileHover={{ scale: 1.08 }}
+                              whileTap={{ scale: 0.93 }}
+                            >
+                              <img
+                                src={ls.src}
+                                alt="sticker"
+                                style={{ width: "80%", height: "80%", objectFit: "contain" }}
+                                draggable={false}
+                                loading="lazy"
+                              />
+                            </motion.button>
+                            {/* Delete button */}
+                            <motion.button
+                              onClick={(e) => handleDeleteLibrary(ls, e)}
+                              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100"
+                              style={{ background: "#EF4444", color: "white", fontSize: 9, lineHeight: 1 }}
+                              whileTap={{ scale: 0.85 }}
+                              transition={{ duration: 0.15 }}
+                            >
+                              ✕
+                            </motion.button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )
+                )}
+              </div>
+            </motion.div>
           </div>{/* end panel rotation wrapper */}
 
           <input

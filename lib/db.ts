@@ -331,6 +331,12 @@ export async function getAllMoodboardImages(): Promise<MoodboardImage[]> {
       rotation: img.rotation,
       zIndex: Number.isFinite(img.zIndex) ? img.zIndex : 1,
       pageIndex: typeof img.pageIndex === "number" ? img.pageIndex : undefined,
+      frame: img.frame,
+      frameColor: img.frameColor,
+      frameText: img.frameText,
+      frameEmoji: img.frameEmoji,
+      borderRadius: typeof img.borderRadius === "number" ? img.borderRadius : undefined,
+      src2: img.src2,
     }))
     .sort((a, b) => a.zIndex - b.zIndex);
 }
