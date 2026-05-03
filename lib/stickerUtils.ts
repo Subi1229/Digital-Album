@@ -106,9 +106,53 @@ export async function removeBackground(
     }
   }
 
+  // Sample background color from corners (average of corner pixels before removal)
+  let bgR = 0, bgG = 0, bgB = 0;
+  for (const [cx, cy] of corners) {
+    const i = idx(cx, cy);
+    bgR += data[i]; bgG += data[i + 1]; bgB += data[i + 2];
+  }
+  bgR = Math.round(bgR / corners.length);
+  bgG = Math.round(bgG / corners.length);
+  bgB = Math.round(bgB / corners.length);
+
   for (const [cx, cy] of corners) {
     const i = idx(cx, cy);
     floodFill(cx, cy, data[i], data[i + 1], data[i + 2]);
+  }
+
+  // Defringe: 3-pass border erosion to kill antialiased edge bleed
+  for (let pass = 0; pass < 3; pass++) {
+    const isBorder = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (data[idx(x, y) + 3] === 0) continue;
+        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H || data[idx(nx, ny) + 3] === 0) {
+            isBorder[y * W + x] = 1;
+            break;
+          }
+        }
+      }
+    }
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (!isBorder[y * W + x]) continue;
+        const pi = idx(x, y);
+        const r = data[pi], g = data[pi + 1], b = data[pi + 2];
+        // How different is this pixel from the background?
+        const maxDiff = Math.max(Math.abs(r - bgR), Math.abs(g - bgG), Math.abs(b - bgB));
+        if (maxDiff < tolerance * 1.2) {
+          // Close to background color — fully transparent
+          data[pi + 3] = 0;
+        } else {
+          // Partially blended — estimate foreground alpha from color distance
+          const estimatedAlpha = Math.min(1, maxDiff / 100);
+          data[pi + 3] = Math.round(data[pi + 3] * estimatedAlpha);
+        }
+      }
+    }
   }
 
   ctx.putImageData(imageData, 0, 0);
@@ -131,11 +175,10 @@ export async function compressImage(dataUrl: string, targetKB = 100): Promise<st
 
   for (const q of [0.85, 0.75, 0.65, 0.50]) {
     const webp = canvas.toDataURL("image/webp", q);
+    // Check if it's actually webp (some browsers fallback to png if they don't support webp)
     if (webp.startsWith("data:image/webp") && webp.length <= targetChars) return webp;
-    const jpeg = canvas.toDataURL("image/jpeg", q);
-    if (jpeg.length <= targetChars) return jpeg;
   }
-  return canvas.toDataURL("image/jpeg", 0.50);
+  return canvas.toDataURL("image/png");
 }
 
 /**
@@ -153,6 +196,8 @@ export async function applyWhiteStroke(
   dataUrl: string,
   strokeSize = 7
 ): Promise<string> {
+  if (strokeSize <= 0) return dataUrl;
+  
   const img = await loadImage(dataUrl);
   const W = img.naturalWidth;
   const H = img.naturalHeight;
