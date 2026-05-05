@@ -509,7 +509,7 @@ export default function StickerPanel({
                             className="w-full accent-stone-800 cursor-pointer"
                             style={{
                               height: 6,
-                              background: "#E7E5E4",
+                              background: `linear-gradient(to right, #292524 0%, #292524 ${(outlineSize / 25) * 100}%, #E7E5E4 ${(outlineSize / 25) * 100}%, #E7E5E4 100%)`,
                               borderRadius: 3,
                               appearance: "none",
                             }}

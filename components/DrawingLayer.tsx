@@ -352,7 +352,15 @@ export default function DrawingLayer({
               max="40"
               value={size}
               onChange={(e) => setSize(parseInt(e.target.value))}
-              style={{ flex: 1, accentColor: "#1E1E1E", height: 4, cursor: "pointer" }}
+              style={{
+                flex: 1,
+                accentColor: "#1E1E1E",
+                height: 4,
+                cursor: "pointer",
+                appearance: "none",
+                background: `linear-gradient(to right, #1E1E1E 0%, #1E1E1E ${((size - 1) / 39) * 100}%, rgba(0,0,0,0.1) ${((size - 1) / 39) * 100}%, rgba(0,0,0,0.1) 100%)`,
+                borderRadius: 2
+              }}
             />
           </div>
         </motion.div>
@@ -427,8 +435,13 @@ export default function DrawingLayer({
                 max="40"
                 value={size}
                 onChange={(e) => setSize(parseInt(e.target.value))}
-                className="appearance-none bg-black/10 rounded-full cursor-pointer"
-                style={{ accentColor: "#1E1E1E", width: "100%", height: 4 }}
+                className="appearance-none rounded-full cursor-pointer"
+                style={{
+                  accentColor: "#1E1E1E",
+                  width: "100%",
+                  height: 4,
+                  background: `linear-gradient(to right, #1E1E1E 0%, #1E1E1E ${((size - 1) / 39) * 100}%, rgba(0,0,0,0.1) ${((size - 1) / 39) * 100}%, rgba(0,0,0,0.1) 100%)`
+                }}
               />
             </div>
             <button

@@ -188,7 +188,7 @@ export default function FrameOptionsModal({
                       accentColor: "#1e1e1e",
                       cursor: "pointer",
                       height: 6,
-                      background: "#E7E5E4",
+                      background: `linear-gradient(to right, #1e1e1e 0%, #1e1e1e ${borderRadius}%, #E7E5E4 ${borderRadius}%, #E7E5E4 100%)`,
                       borderRadius: 3,
                       appearance: "none",
                     }}
