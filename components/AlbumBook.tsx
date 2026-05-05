@@ -14,6 +14,7 @@ import DrawingLayer from "./DrawingLayer";
 import CropModal from "./CropModal";
 import StickerPanel from "./StickerPanel";
 import ShareModal from "./ShareModal";
+import DesktopExperienceBanner from "./DesktopExperienceBanner";
 import { SlotImage, Sticker, LibrarySticker, PendingCrop, MoodboardImage, MoodboardText, FrameType } from "@/lib/types";
 import FramePickerModal from "./FramePickerModal";
 import FrameOptionsModal from "./FrameOptionsModal";
@@ -748,6 +749,7 @@ export default function AlbumBook() {
         imageRendering: "high-quality" as React.CSSProperties["imageRendering"],
         position: "relative",
       }}>
+      <DesktopExperienceBanner />
 
       {/* Rotated background for mobile/tablet landscape */}
       {bgImageUrl && isMobile && (
