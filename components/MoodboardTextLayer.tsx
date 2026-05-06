@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, startTransition, useSyncExternalStore } from "react";
 import { motion, useMotionValue } from "framer-motion";
 import { HexColorPicker } from "react-colorful";
 import { MoodboardText } from "@/lib/types";
 import { PAGE_W } from "@/lib/constants";
+import { acquireLock, releaseLock, isLockedByOther, subscribeLock, getLockSnapshot } from "@/lib/moodboardLock";
 
 interface MoodboardTextLayerProps {
   albumId: string;
@@ -45,7 +46,11 @@ export default function MoodboardTextLayer({
   const isSpread = containerWidth > PAGE_W * 1.1;
   const pageTexts = texts.filter((t) => t.albumId === albumId && (t.pageIndex === pageIndex || (isSpread && t.pageIndex === pageIndex + 1)));
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [colorPickerTargetId, setColorPickerTargetId] = useState<string | null>(null);
+
+  // Subscribe to cross-layer lock so we re-render when another layer acquires/releases
+  useSyncExternalStore(subscribeLock, getLockSnapshot, getLockSnapshot);
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
@@ -93,6 +98,9 @@ export default function MoodboardTextLayer({
           onColorClick={() => setColorPickerTargetId(text.id)}
           onTextsChange={onTextsChange}
           toolbarActiveRef={toolbarActiveRef}
+          isBlocked={(activeId !== null && activeId !== text.id) || isLockedByOther("mbtext", text.id)}
+          onManipulateStart={() => { acquireLock("mbtext", text.id); startTransition(() => setActiveId(text.id)); }}
+          onManipulateEnd={() => { releaseLock("mbtext", text.id); startTransition(() => setActiveId(null)); }}
         />
       ))}
 
@@ -250,6 +258,9 @@ interface ItemProps {
   onColorClick: () => void;
   onTextsChange: (texts: MoodboardText[]) => void;
   toolbarActiveRef: React.MutableRefObject<boolean>;
+  isBlocked: boolean;
+  onManipulateStart: () => void;
+  onManipulateEnd: () => void;
 }
 
 function MoodboardTextItem({
@@ -263,6 +274,9 @@ function MoodboardTextItem({
   onColorClick,
   onTextsChange,
   toolbarActiveRef,
+  isBlocked,
+  onManipulateStart,
+  onManipulateEnd,
 }: ItemProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const textDisplayRef = useRef<HTMLDivElement>(null);
@@ -338,7 +352,8 @@ function MoodboardTextItem({
     const next = { ...draft, x: nx, y: ny };
     setDraft(next);
     commit(next);
-  }, [commit, containerHeight, containerWidth, draft, x, y]);
+    onManipulateEnd();
+  }, [commit, containerHeight, containerWidth, draft, x, y, onManipulateEnd]);
 
   const updateDraft = useCallback((patch: Partial<MoodboardText>) => {
     const next = { ...draft, ...patch };
@@ -351,6 +366,7 @@ function MoodboardTextItem({
     (e.nativeEvent as Event).stopImmediatePropagation();
     e.preventDefault();
     setResizing(true);
+    onManipulateStart();
     resizeRef.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -358,7 +374,7 @@ function MoodboardTextItem({
       startSize: draft.fontSize,
     };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  }, [draft.fontSize, draft.width]);
+  }, [draft.fontSize, draft.width, onManipulateStart]);
 
   const moveResize = useCallback((e: React.PointerEvent) => {
     const rs = resizeRef.current;
@@ -380,11 +396,12 @@ function MoodboardTextItem({
     if (!resizeRef.current) return;
     resizeRef.current = null;
     setResizing(false);
+    onManipulateEnd();
     const live = liveResizeRef.current;
     const next = { ...draft, width: live.width, fontSize: live.fontSize };
     setDraft(next);
     commit(next);
-  }, [commit, draft]);
+  }, [commit, draft, onManipulateEnd]);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -407,6 +424,7 @@ function MoodboardTextItem({
       };
       setResizing(true);
       setRotating(true);
+      onManipulateStartRef.current();
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -435,6 +453,7 @@ function MoodboardTextItem({
       touchRef.current = null;
       setResizing(false);
       setRotating(false);
+      onManipulateEndRef.current();
       const live = liveResizeRef.current;
       const next = { ...draft, width: live.width, fontSize: live.fontSize, rotation: live.rotation };
       setDraft(next);
@@ -453,6 +472,12 @@ function MoodboardTextItem({
     };
   }, [commit, draft]);
 
+  // Stable refs for manipulate callbacks (safe in useEffect touch handlers)
+  const onManipulateStartRef = useRef(onManipulateStart);
+  const onManipulateEndRef = useRef(onManipulateEnd);
+  onManipulateStartRef.current = onManipulateStart;
+  onManipulateEndRef.current = onManipulateEnd;
+
   return (
     <motion.div
       ref={rootRef}
@@ -466,12 +491,13 @@ function MoodboardTextItem({
         rotate: rotateMV,
         transformOrigin: "center center",
         zIndex: isSelected ? (text.zIndex + 100) : text.zIndex,
-        pointerEvents: "auto",
+        pointerEvents: isBlocked ? "none" : "auto",
+        cursor: isBlocked ? "default" : undefined,
         touchAction: "none",
         userSelect: "none",
         willChange: "transform",
       }}
-      drag={!editing && !rotating && !resizing}
+      drag={!editing && !rotating && !resizing && !isBlocked}
       dragMomentum={false}
       dragElastic={0}
       // @ts-ignore — transformPagePoint removed from FM types but still works at runtime
@@ -482,6 +508,7 @@ function MoodboardTextItem({
         onSelect();
       }}
       onDoubleClick={() => setEditing(true)}
+      onDragStart={() => onManipulateStart()}
       onDragEnd={onDragEnd}
       onHoverStart={() => setHovered(true)}
       onHoverEnd={() => setHovered(false)}

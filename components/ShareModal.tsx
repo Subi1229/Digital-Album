@@ -377,6 +377,27 @@ async function exportTemplate6Spread(
   return finalCanvas;
 }
 
+async function generateMoodboardThumb(
+  moodboardImages: import("@/lib/types").MoodboardImage[],
+  stickers: import("@/lib/types").Sticker[],
+  albumId: string,
+  pageIndex: number,
+  isSpread: boolean,
+  thumbScale: number
+): Promise<string> {
+  const W = Math.round((isSpread ? PAGE_W * 2 : PAGE_W) * thumbScale);
+  const H = Math.round(PAGE_H * thumbScale);
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, H);
+  await overdrawMoodboardImages(canvas, moodboardImages, albumId, pageIndex, thumbScale, isSpread);
+  await overdrawStickers(canvas, stickers, pageIndex, thumbScale, isSpread ? PAGE_W * 2 : PAGE_W, isSpread);
+  return canvas.toDataURL("image/jpeg", 0.5);
+}
+
 async function exportTemplate5Page(
   el: HTMLElement,
   html2canvasFn: (el: HTMLElement, opts: object) => Promise<HTMLCanvasElement>,
@@ -526,6 +547,16 @@ export default function ShareModal({
       const cacheKey = `${albumId}:${i}`;
       if (thumbCache[cacheKey]) {
         setThumbnails((prev) => prev[i] ? prev : { ...prev, [i]: thumbCache[cacheKey] });
+        continue;
+      }
+      const tpl = getPageTemplateId(i);
+      if (tpl === 5 || tpl === 6) {
+        try {
+          const dataUrl = await generateMoodboardThumb(moodboardImages, stickers, albumId, i, tpl === 6, 0.12);
+          thumbCache[cacheKey] = dataUrl;
+          setThumbnails((prev) => ({ ...prev, [i]: dataUrl }));
+        } catch { }
+        await new Promise((r) => setTimeout(r, 0));
         continue;
       }
       const el = container.querySelector(`[data-share-page="${i}"]`) as HTMLElement | null;

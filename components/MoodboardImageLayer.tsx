@@ -7,10 +7,13 @@ import React, {
   useRef,
   useState,
   startTransition,
+  useSyncExternalStore,
 } from "react";
 import { motion, useMotionValue } from "framer-motion";
 import { MoodboardImage, FrameType } from "@/lib/types";
 import { PAGE_W } from "@/lib/constants";
+import { markStickerPress } from "@/lib/stickerInteraction";
+import { acquireLock, releaseLock, isLockedByOther, subscribeLock, getLockSnapshot } from "@/lib/moodboardLock";
 
 
 // ── Frame helpers ──────────────────────────────────────────────────────────────
@@ -169,13 +172,13 @@ function ClipPolaroidFrame({ color }: { color: string }) {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CORNER_H = 24;   // invisible corner resize hit area
+const CORNER_H = 44;   // invisible corner resize hit area
 const CORNER_OFF = -(CORNER_H / 2);
-const EDGE_LONG = 28;   // invisible edge resize hit area (long side)
-const EDGE_SHORT = 10;   // invisible edge resize hit area (short side)
+const EDGE_LONG = 44;   // invisible edge resize hit area (long side)
+const EDGE_SHORT = 20;   // invisible edge resize hit area (short side)
 const EDGE_OFF = -(EDGE_SHORT / 2);
-const ROT_SIZE = 26;   // invisible rotate hit area
-const ROT_OFF = -30;  // rotate zone offset from corner (outside)
+const ROT_SIZE = 44;   // invisible rotate hit area
+const ROT_OFF = -38;  // rotate zone offset from corner (outside)
 const DEL_SIZE = 22;   // delete button diameter
 const MIN_DIM = 40;   // minimum image dimension (px)
 const RADIUS = 15;   // image border-radius
@@ -227,18 +230,28 @@ export default function MoodboardImageLayer({
   const [activeId, setActiveId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Subscribe to cross-layer lock so we re-render when another layer acquires/releases
+  useSyncExternalStore(subscribeLock, getLockSnapshot, getLockSnapshot);
+
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
+    // Mirror pageImages filter exactly — include spread page so right-page images
+    // are found and their zIndex is correctly calculated against all visible images.
     const scoped = images.filter(
-      (img) => img.albumId === albumId && (typeof img.pageIndex !== "number" || img.pageIndex === pageIndex),
+      (img) => img.albumId === albumId && (
+        typeof img.pageIndex !== "number" ||
+        img.pageIndex === pageIndex ||
+        (isSpread && img.pageIndex === pageIndex + 1)
+      ),
     );
     const current = scoped.find((img) => img.id === id);
     if (!current) return;
     const maxZ = scoped.reduce((max, img) => Math.max(max, img.zIndex ?? 1), 1);
     const currentZ = current.zIndex ?? 1;
-    if (currentZ >= maxZ) return;
+    // Always bump — if multiple images share the same zIndex (including the max),
+    // DOM order would determine stacking instead of tap order.
     onImagesChange(images.map((img) => (img.id === id ? { ...img, zIndex: maxZ + 1 } : img)));
-  }, [albumId, images, onImagesChange, pageIndex]);
+  }, [albumId, images, onImagesChange, pageIndex, isSpread]);
 
 
   // Deselect on tap outside any image
@@ -274,9 +287,10 @@ export default function MoodboardImageLayer({
           onImagesChange={onImagesChange}
           isSelected={selectedId === img.id}
           onSelect={() => handleSelect(img.id)}
-          isBlocked={activeId !== null && activeId !== img.id}
-          onManipulateStart={() => startTransition(() => setActiveId(img.id))}
-          onManipulateEnd={() => startTransition(() => setActiveId(null))}
+          isBlocked={(activeId !== null && activeId !== img.id) || isLockedByOther("mbimage", img.id)}
+          isOtherSelected={selectedId !== null && selectedId !== img.id}
+          onManipulateStart={() => { acquireLock("mbimage", img.id); startTransition(() => setActiveId(img.id)); }}
+          onManipulateEnd={() => { releaseLock("mbimage", img.id); startTransition(() => setActiveId(null)); }}
           forExport={forExport}
         />
       ))}
@@ -295,6 +309,7 @@ interface ItemProps {
   isSelected: boolean;
   onSelect: () => void;
   isBlocked: boolean;
+  isOtherSelected: boolean;
   onManipulateStart: () => void;
   onManipulateEnd: () => void;
   forExport?: boolean;
@@ -310,6 +325,7 @@ function MoodboardImageItem({
   isSelected,
   onSelect,
   isBlocked,
+  isOtherSelected,
   onManipulateStart,
   onManipulateEnd,
   forExport = false,
@@ -345,9 +361,21 @@ function MoodboardImageItem({
     setLive(synced);
   }, [image.x, image.y, image.width, image.height, image.rotation]); // eslint-disable-line
 
+  // Pre-decode image into GPU memory as soon as this component mounts.
+  // react-pageflip pre-renders adjacent pages before the flip animation starts,
+  // so by the time the user flips, the image is already decoded and the CSS
+  // backgroundImage paints instantly from cache — eliminating the flicker.
+  useEffect(() => {
+    if (!image.src) return;
+    const img = new Image();
+    img.src = image.src;
+    img.decode().catch(() => {});
+  }, [image.src]);
+
   const divRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<ActiveInteraction | null>(null);
   const dragRef = useRef<{ startPtr: { x: number; y: number }; startImg: { x: number; y: number } } | null>(null);
+  const cachedRectRef = useRef<DOMRect | null>(null);
 
   // Stable refs so event handlers never become stale
   const imageRef = useRef(image);
@@ -370,10 +398,10 @@ function MoodboardImageItem({
   // HTMLFlipBook. getBoundingClientRect() on the layer container already reflects
   // all ancestor CSS transforms, so we can derive the mapping directly from it.
   const screenToPage = useCallback(
-    (sx: number, sy: number): { x: number; y: number } => {
+    (sx: number, sy: number, rect?: DOMRect): { x: number; y: number } => {
       const el = containerRef.current;
       if (!el) return { x: 0, y: 0 };
-      const rect = el.getBoundingClientRect();
+      if (!rect) rect = el.getBoundingClientRect();
 
       // Heuristic: if the container's rendered width is closer to containerHeight
       // than containerWidth, the page has been rotated -90° (mobile layout).
@@ -405,10 +433,10 @@ function MoodboardImageItem({
 
   // Screen position of the image center (for rotation angle calculation)
   const centerScreen = useCallback(
-    (img: MoodboardImage): { x: number; y: number } => {
+    (img: MoodboardImage, rect?: DOMRect): { x: number; y: number } => {
       const el = containerRef.current;
       if (!el) return { x: 0, y: 0 };
-      const rect = el.getBoundingClientRect();
+      if (!rect) rect = el.getBoundingClientRect();
 
       const scaleFlat = rect.width / containerWidth;
       const scaleRot = rect.width / containerHeight;
@@ -457,10 +485,14 @@ function MoodboardImageItem({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       stopNative(e);
+      // Suppress the ~300ms ghost click the browser synthesises after touchend
+      // so it cannot fall through to ImageSlot or other elements underneath.
+      markStickerPress();
       onSelect();
       if (activeRef.current) return;
       e.currentTarget.setPointerCapture(e.pointerId);
-      const ptr = screenToPage(e.clientX, e.clientY);
+      cachedRectRef.current = containerRef.current?.getBoundingClientRect() ?? null;
+      const ptr = screenToPage(e.clientX, e.clientY, cachedRectRef.current ?? undefined);
       dragRef.current = { startPtr: ptr, startImg: { x: mx.get(), y: my.get() } };
       onManipulateStartRef.current();
     },
@@ -481,6 +513,7 @@ function MoodboardImageItem({
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       setIsTransforming(true);
       onManipulateStartRef.current();
+      cachedRectRef.current = containerRef.current?.getBoundingClientRect() ?? null;
 
       const img = imageRef.current;
       const cx = img.x + img.width / 2;
@@ -510,7 +543,7 @@ function MoodboardImageItem({
           anchor: { x: ax, y: ay },
         };
       } else {
-        const cs = centerScreen(img);
+        const cs = centerScreen(img, cachedRectRef.current ?? undefined);
         const ang = Math.atan2(e.clientY - cs.y, e.clientX - cs.x) * (180 / Math.PI);
         activeRef.current = {
           type: "rotate", handle,
@@ -530,7 +563,7 @@ function MoodboardImageItem({
       if (!act) {
         if (dragRef.current) {
           const d = dragRef.current;
-          const ptr = screenToPage(e.clientX, e.clientY);
+          const ptr = screenToPage(e.clientX, e.clientY, cachedRectRef.current ?? undefined);
           mx.set(d.startImg.x + ptr.x - d.startPtr.x);
           my.set(d.startImg.y + ptr.y - d.startPtr.y);
         }
@@ -557,7 +590,7 @@ function MoodboardImageItem({
 
       // ── Resize ──────────────────────────────────────────────────────────
       const anchor = act.anchor!;
-      const ptr = screenToPage(e.clientX, e.clientY);
+      const ptr = screenToPage(e.clientX, e.clientY, cachedRectRef.current ?? undefined);
       const dax = ptr.x - anchor.x;
       const day = ptr.y - anchor.y;
 
@@ -704,19 +737,26 @@ function MoodboardImageItem({
         setIsTransforming(false);
         return;
       }
+      // Prevent browser native pinch-zoom — must be in touchstart (not just
+      // touchmove) otherwise the browser commits its own gesture first.
+      e.preventDefault();
+      // Cancel any active single-finger drag so pointer and touch handlers
+      // don't both write to mx/my simultaneously during a pinch gesture.
+      dragRef.current = null;
       setIsTransforming(true);
       onManipulateStartRef.current();
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const img = imageRef.current;
+      const lt = liveRef.current;
       touchRef.current = {
         dist0: Math.hypot(dx, dy),
         angle0: Math.atan2(dy, dx),
-        w0: img.width,
-        h0: img.height,
-        rot0: img.rotation,
-        cx0: img.x + img.width / 2,
-        cy0: img.y + img.height / 2,
+        w0: lt.width,
+        h0: lt.height,
+        rot0: lt.rotation,
+        cx0: mx.get() + lt.width / 2,
+        cy0: my.get() + lt.height / 2,
       };
     };
 
@@ -754,7 +794,7 @@ function MoodboardImageItem({
       changeRef.current(allRef.current.map((i) => (i.id === img.id ? updated : i)));
     };
 
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
     el.addEventListener("touchcancel", onTouchEnd, { passive: true });
@@ -816,10 +856,17 @@ function MoodboardImageItem({
       }}
       onPointerDown={handlePointerDown}
       onMouseDown={stopNative}
-      onPointerMove={handleInteractionMove}
+      onPointerMove={(e) => {
+        handleInteractionMove(e);
+        // touchAction:"none" suppresses pointerenter for stylus on many tablets,
+        // so detect pen hover via pointermove with no button pressed instead.
+        if ((e.pointerType === "pen" || e.pointerType === "mouse") && e.buttons === 0 && !isHovered) {
+          setIsHovered(true);
+        }
+      }}
       onPointerUp={handleInteractionUp}
       onPointerCancel={handleInteractionUp}
-      onPointerEnter={(e) => { if (e.pointerType === "pen" || e.pointerType === "mouse") setIsHovered(true); }}
+      onPointerEnter={(e) => { if (e.pointerType === "mouse") setIsHovered(true); }}
       onPointerLeave={() => setIsHovered(false)}
     >
 
@@ -913,7 +960,7 @@ function MoodboardImageItem({
       )}
 
       {/* ── Resize handles ────────────────────────────────────────────────── */}
-      {(isSelected || isHovered) &&
+      {(isSelected || (isHovered && !isOtherSelected)) &&
         resizeHandles.map(({ handle, style, cursor }) => (
           <div
             key={handle}
@@ -934,7 +981,7 @@ function MoodboardImageItem({
         ))}
 
       {/* ── Rotate zones (outside corners) ───────────────────────────────── */}
-      {(isSelected || isHovered) &&
+      {(isSelected || (isHovered && !isOtherSelected)) &&
         rotHandles.map(({ handle, style }) => (
           <div
             key={handle}

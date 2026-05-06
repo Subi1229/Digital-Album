@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useLayoutEffect, useCallback, useRef, useState, startTransition } from "react";
+import React, { useEffect, useLayoutEffect, useCallback, useRef, useState, startTransition, useSyncExternalStore } from "react";
 import {
   motion,
   AnimatePresence,
@@ -11,6 +11,7 @@ import { PAGE_W } from "@/lib/constants";
 import { saveSticker, deleteSticker } from "@/lib/db";
 // MOBILE FIX: shared flag so ImageSlot can suppress ghost clicks from sticker taps
 import { markStickerPress } from "@/lib/stickerInteraction";
+import { acquireLock, releaseLock, isLockedByOther, subscribeLock, getLockSnapshot } from "@/lib/moodboardLock";
 
 // ── Rotate zone constants (mirrors MoodboardImageLayer) ──────────────────────
 const ROT_SIZE = 26;  // invisible rotate hit-area size (px)
@@ -37,6 +38,9 @@ export default function StickerLayer(props: StickerLayerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // ── Active manipulation — blocks pointer events on all other stickers ─────
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Subscribe to cross-layer lock so we re-render when another layer acquires/releases
+  useSyncExternalStore(subscribeLock, getLockSnapshot, getLockSnapshot);
   // ── Z-order map: seeded from persisted zIndex, bumped on each selection ─────
   const [zOrders, setZOrders] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
@@ -143,9 +147,9 @@ export default function StickerLayer(props: StickerLayerProps) {
             isSelected={selectedId === sticker.id}
             onSelect={() => handleSelect(sticker.id)}
             zOrder={zOrders[sticker.id] ?? 0}
-            isBlocked={activeId !== null && activeId !== sticker.id}
-            onManipulateStart={() => startTransition(() => setActiveId(sticker.id))}
-            onManipulateEnd={() => startTransition(() => setActiveId(null))}
+            isBlocked={(activeId !== null && activeId !== sticker.id) || isLockedByOther("sticker", sticker.id)}
+            onManipulateStart={() => { acquireLock("sticker", sticker.id); startTransition(() => setActiveId(sticker.id)); }}
+            onManipulateEnd={() => { releaseLock("sticker", sticker.id); startTransition(() => setActiveId(null)); }}
             forExport={forExport}
             onPeelStart={handlePeelStart}
           />
@@ -439,6 +443,10 @@ function DraggableSticker({
     const onTouchStart = (e: TouchEvent) => {
       e.stopImmediatePropagation();
       if (e.touches.length === 2) {
+        // Must preventDefault here (not just in touchmove) — if touchstart is
+        // passive the browser commits its own native zoom gesture before our
+        // touchmove handler fires, causing the visual snap-back on pinch.
+        e.preventDefault();
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         pinchRef.current = {
@@ -479,7 +487,7 @@ function DraggableSticker({
       await saveSticker(updated);
     };
 
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
     el.addEventListener("touchcancel", onTouchEnd, { passive: true });
@@ -497,13 +505,17 @@ function DraggableSticker({
     y.set(sticker.y * containerHeight);
   }, [sticker.x, sticker.y, containerWidth, containerHeight]); // eslint-disable-line
 
-  // Keep scaleMotion in sync when the persisted sticker.scale changes (e.g. page load)
+  // Keep scaleMotion in sync when the persisted sticker.scale changes (e.g. page load).
+  // Guard: skip during an active pinch gesture so the parent re-render that follows
+  // onManipulateStart (with stale scale in the sticker prop) doesn't snap the value back.
   useEffect(() => {
+    if (pinchRef.current) return;
     scaleMotion.set(sticker.scale ?? 1);
   }, [sticker.scale]); // eslint-disable-line
 
-  // Keep rotateMotion in sync when the persisted sticker.rotation changes (e.g. page load)
+  // Keep rotateMotion in sync when the persisted sticker.rotation changes (e.g. page load).
   useEffect(() => {
+    if (pinchRef.current) return;
     rotateMotion.set(sticker.rotation ?? 0);
   }, [sticker.rotation]); // eslint-disable-line
 
@@ -535,9 +547,10 @@ function DraggableSticker({
   const handleDragEnd = useCallback(async () => {
     const rawX = x.get();
     const rawY = y.get();
+    // Read live MotionValues — NOT sticker prop — so a drag that overlaps with
+    // a pinch gesture doesn't overwrite the pinch's scale/rotation with stale values.
     const curScale = scaleMotion.get();
-    // With transformOrigin:"center center", the visual center = (x + w/2, y + h/2)
-    // and stays fixed regardless of scale. Clamp so the center stays inside the page.
+    const curRot = rotateMotion.get();
     const hw = sticker.width / 2;
     const hh = sticker.height / 2;
     const clampedX = Math.max(-hw, Math.min(containerWidth - hw, rawX));
@@ -547,11 +560,11 @@ function DraggableSticker({
     const nx = clampedX / containerWidth;
     const ny = clampedY / containerHeight;
     startTransition(() => {
-      onStickersChange(allStickers.map((s) => s.id === sticker.id ? { ...s, x: nx, y: ny } : s));
+      onStickersChange(allStickers.map((s) => s.id === sticker.id ? { ...s, x: nx, y: ny, scale: curScale, rotation: curRot } : s));
     });
-    await saveSticker({ ...sticker, x: nx, y: ny });
+    await saveSticker({ ...sticker, x: nx, y: ny, scale: curScale, rotation: curRot });
     onManipulateEnd();
-  }, [x, y, sticker, containerWidth, containerHeight, allStickers, onStickersChange, scaleMotion, onManipulateEnd]);
+  }, [x, y, sticker, containerWidth, containerHeight, allStickers, onStickersChange, scaleMotion, rotateMotion, onManipulateEnd]);
 
   // ── Corner resize handlers (desktop) ────────────────────────────────────────
   // Invisible corner zones capture pointer events so FM drag never starts —
@@ -678,12 +691,12 @@ function DraggableSticker({
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (false) return; // isPeeling removed; peel is now handled in StickerLayer
 
-    // ── Mobile: skip mouse-compat pointer events ─────────────────────────
-    // After touchend, mobile browsers synthesise mousedown/mouseup (pointerType
-    // "mouse") for backwards compatibility. These arrive ~0–300 ms after the
-    // real touch pointerup and would reset lastTapRef, making double-tap
-    // detection unreliable. Skip them on touch-capable devices.
-    if (lastPointerTypeRef.current === "touch" && e.pointerType === "mouse") return;
+    // ── Skip browser-synthesised mouse-compat events after touch/pen ────────
+    // After touchend or pen liftoff, browsers synthesise pointerType:"mouse"
+    // events for backwards compatibility (~0–300 ms later). These must be
+    // suppressed for both touch AND pen — otherwise the ghost event sees a
+    // delta < maxGap and triggers a second peel on an already-deleted sticker.
+    if ((lastPointerTypeRef.current === "touch" || lastPointerTypeRef.current === "pen") && e.pointerType === "mouse") return;
 
     const dx = Math.abs(e.clientX - pointerDownPos.current.x);
     const dy = Math.abs(e.clientY - pointerDownPos.current.y);
@@ -691,9 +704,9 @@ function DraggableSticker({
 
     const now = Date.now();
     const delta = now - lastTapRef.current;
-    // Touch double-taps have a wider natural gap than mouse double-clicks,
-    // so allow up to 600 ms between taps on touch devices.
-    const maxGap = e.pointerType === "touch" ? 600 : 350;
+    // Pen double-tap gets the same wide window as touch (600 ms) — stylus
+    // tap cadence is similar to finger tap cadence, not mouse click cadence.
+    const maxGap = (e.pointerType === "touch" || e.pointerType === "pen") ? 600 : 350;
     if (delta < maxGap && delta > 30) {
       // Double-tap: snapshot position AND current scale before re-render so
       // PeelAnimation starts at the exact same visual state — no size jump.
