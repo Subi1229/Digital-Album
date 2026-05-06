@@ -280,27 +280,29 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
           className="album-page"
           style={{ width: PAGE_W, height: PAGE_H, background: "#FFFFFF", position: "relative", overflow: "hidden", flexShrink: 0 }}
         >
-          <div style={{ position: "absolute", top: 0, left: offsetX, width: SPREAD_W, height: PAGE_H, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", inset: 0, zIndex: 45, pointerEvents: "none" }}>
-              <MoodboardImageLayer albumId={albumId} images={moodboardImages} pageIndex={isLeft ? pageIndex : pageIndex - 1}
-                containerWidth={SPREAD_W} containerHeight={PAGE_H} onImagesChange={onMoodboardImagesChange ?? (() => { })} forExport={forExport} />
+          {!isOffscreen && (
+            <div style={{ position: "absolute", top: 0, left: offsetX, width: SPREAD_W, height: PAGE_H, pointerEvents: "none" }}>
+              <div style={{ position: "absolute", inset: 0, zIndex: 45, pointerEvents: "none" }}>
+                <MoodboardImageLayer albumId={albumId} images={moodboardImages} pageIndex={isLeft ? pageIndex : pageIndex - 1}
+                  containerWidth={SPREAD_W} containerHeight={PAGE_H} onImagesChange={onMoodboardImagesChange ?? (() => { })} forExport={forExport} />
+              </div>
+              <div style={{ position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none" }}>
+                <StickerLayer stickers={stickers} pageIndex={isLeft ? pageIndex : pageIndex - 1}
+                  containerWidth={SPREAD_W} containerHeight={PAGE_H} onStickersChange={onStickersChange} forExport={forExport} />
+              </div>
+              <div style={{ position: "absolute", inset: 0, zIndex: 55, pointerEvents: "none" }}>
+                <MoodboardTextLayer albumId={albumId} pageIndex={isLeft ? pageIndex : pageIndex - 1}
+                  texts={moodboardTexts} containerWidth={SPREAD_W} containerHeight={PAGE_H} onTextsChange={onMoodboardTextsChange ?? (() => { })} />
+              </div>
+              {(() => {
+                const pi = isLeft ? pageIndex : pageIndex - 1; return drawings[pi] && (
+                  <div className="absolute inset-0 z-[58] pointer-events-none">
+                    <img src={drawings[pi]} alt="drawing" className="w-full h-full object-contain" />
+                  </div>
+                );
+              })()}
             </div>
-            <div style={{ position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none" }}>
-              <StickerLayer stickers={stickers} pageIndex={isLeft ? pageIndex : pageIndex - 1}
-                containerWidth={SPREAD_W} containerHeight={PAGE_H} onStickersChange={onStickersChange} forExport={forExport} />
-            </div>
-            <div style={{ position: "absolute", inset: 0, zIndex: 55, pointerEvents: "none" }}>
-              <MoodboardTextLayer albumId={albumId} pageIndex={isLeft ? pageIndex : pageIndex - 1}
-                texts={moodboardTexts} containerWidth={SPREAD_W} containerHeight={PAGE_H} onTextsChange={onMoodboardTextsChange ?? (() => { })} />
-            </div>
-            {(() => {
-              const pi = isLeft ? pageIndex : pageIndex - 1; return drawings[pi] && (
-                <div className="absolute inset-0 z-[58] pointer-events-none">
-                  <img src={drawings[pi]} alt="drawing" className="w-full h-full object-contain" />
-                </div>
-              );
-            })()}
-          </div>
+          )}
         </div>
       );
     }
@@ -322,8 +324,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             isolation: forExport ? undefined : "isolate",
             backfaceVisibility: forExport ? undefined : "hidden",
             WebkitBackfaceVisibility: forExport ? undefined : "hidden",
-            transform: forExport ? undefined : "translateZ(0)",
-            contain: forExport ? undefined : "strict",
+            contain: forExport ? undefined : "layout paint",
           }}
         >
           {/* Hidden file inputs for moodboard images */}

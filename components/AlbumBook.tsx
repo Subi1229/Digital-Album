@@ -176,10 +176,13 @@ export default function AlbumBook() {
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
   const [blobUrlVersion, setBlobUrlVersion] = useState(0);
 
+  // blobUrlVersion is a dependency so resolveBlobUrl gets a new reference after
+  // each cache fill, causing child components to re-render and pick up blob URLs.
   const resolveBlobUrl = useCallback((src: string) => {
     if (!src || !src.startsWith("data:")) return src;
     return blobUrlCacheRef.current.get(src) || src;
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blobUrlVersion]);
 
   const updateBlobCache = useCallback(async (dataUrls: string[]) => {
     const unique = Array.from(new Set(dataUrls.filter(s => s && s.startsWith("data:") && !blobUrlCacheRef.current.has(s))));
