@@ -25,10 +25,11 @@ interface StickerLayerProps {
   containerHeight: number;
   onStickersChange: (stickers: Sticker[]) => void;
   forExport?: boolean;
+  resolveBlobUrl?: (src: string) => string;
 }
 
 export default function StickerLayer(props: StickerLayerProps) {
-  const { stickers, pageIndex, containerWidth, containerHeight, onStickersChange, forExport = false } = props;
+  const { stickers, pageIndex, containerWidth, containerHeight, onStickersChange, forExport = false, resolveBlobUrl = (s: string) => s } = props;
   const [peelingStickerIds, setPeelingStickerIds] = useState<Set<string>>(new Set());
   const isSpread = containerWidth > PAGE_W * 1.1;
   const pageStickers = stickers.filter((s) => (s.pageIndex === pageIndex || (isSpread && s.pageIndex === pageIndex + 1)) && !peelingStickerIds.has(s.id));
@@ -152,6 +153,7 @@ export default function StickerLayer(props: StickerLayerProps) {
             onManipulateEnd={() => { releaseLock("sticker", sticker.id); startTransition(() => setActiveId(null)); }}
             forExport={forExport}
             onPeelStart={handlePeelStart}
+            resolveBlobUrl={resolveBlobUrl}
           />
         ))}
         {peelingStickers.map(({ sticker, originX, originY, peelScale, zIndex }) => (
@@ -356,6 +358,7 @@ interface DraggableStickerProps {
   onManipulateEnd: () => void;
   forExport?: boolean;
   onPeelStart: (sticker: Sticker, originX: number, originY: number, peelScale: number) => void;
+  resolveBlobUrl: (src: string) => string;
 }
 
 function DraggableSticker({
@@ -373,6 +376,7 @@ function DraggableSticker({
   onManipulateEnd,
   forExport = false,
   onPeelStart,
+  resolveBlobUrl,
 }: DraggableStickerProps) {
   // Tight content bounds in element-px space (non-transparent pixel area of the PNG)
   const [contentBounds, setContentBounds] = useState<{ left: number; top: number; bw: number; bh: number } | null>(null);
@@ -429,6 +433,71 @@ function DraggableSticker({
   stickerRef.current = sticker;
   allStickersR.current = allStickers;
   onChangeRef.current = onStickersChange;
+
+  const imgRef = useRef<HTMLImageElement>(null);
+  const isScanningRef = useRef(false);
+
+  const performScan = useCallback((imgEl: HTMLImageElement) => {
+    if (isScanningRef.current || contentBounds) return;
+    const nw = imgEl.naturalWidth;
+    const nh = imgEl.naturalHeight;
+    if (!nw || !nh) return;
+    const ew = sticker.width, eh = sticker.height;
+
+    isScanningRef.current = true;
+    // Defer pixel scan off the render cycle so the sticker renders immediately
+    setTimeout(() => {
+      try {
+        const canvas = document.createElement("canvas");
+        // Downsample large images for faster scanning (max 256px side)
+        const maxSide = 256;
+        const scanScale = Math.min(1, maxSide / Math.max(nw, nh));
+        const sw = Math.round(nw * scanScale);
+        const sh = Math.round(nh * scanScale);
+        canvas.width = sw;
+        canvas.height = sh;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(imgEl, 0, 0, sw, sh);
+        const { data } = ctx.getImageData(0, 0, sw, sh);
+        let minX = sw, maxX = -1, minY = sh, maxY = -1;
+        for (let py = 0; py < sh; py++) {
+          for (let px = 0; px < sw; px++) {
+            if (data[(py * sw + px) * 4 + 3] > 10) {
+              if (px < minX) minX = px;
+              if (px > maxX) maxX = px;
+              if (py < minY) minY = py;
+              if (py > maxY) maxY = py;
+            }
+          }
+        }
+        if (maxX >= minX && maxY >= minY) {
+          // Map back from scan space → element space
+          const fitScale = Math.min(ew / nw, eh / nh);
+          const imgW = nw * fitScale, imgH = nh * fitScale;
+          const offX = (ew - imgW) / 2, offY = (eh - imgH) / 2;
+          const pixelScale = fitScale / scanScale;
+          setContentBounds({
+            left: offX + minX * pixelScale,
+            top: offY + minY * pixelScale,
+            bw: (maxX - minX + 1) * pixelScale,
+            bh: (maxY - minY + 1) * pixelScale,
+          });
+        }
+      } catch (err) {
+        console.error("Sticker scan error:", err);
+      } finally {
+        isScanningRef.current = false;
+      }
+    }, 10);
+  }, [sticker.width, sticker.height, contentBounds]);
+
+  // If forExport is false (visible page), ensure the scan runs even if onLoad fired while it was hidden
+  useEffect(() => {
+    if (!forExport && !contentBounds && imgRef.current?.complete) {
+      performScan(imgRef.current);
+    }
+  }, [forExport, contentBounds, performScan]);
 
 
   // ── Pinch-to-resize + two-finger rotate (mobile) ────────────────────────────
@@ -799,58 +868,11 @@ function DraggableSticker({
 
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
         <img
-          src={sticker.dataUrl}
+          ref={imgRef}
+          src={resolveBlobUrl(sticker.dataUrl)}
           alt="sticker"
           onLoad={(e) => {
-            const imgEl = e.currentTarget;
-            const nw = imgEl.naturalWidth;
-            const nh = imgEl.naturalHeight;
-            if (!nw || !nh) return;
-            const ew = sticker.width, eh = sticker.height;
-            // Defer pixel scan off the render cycle so the sticker renders immediately
-            setTimeout(() => {
-              try {
-                const canvas = document.createElement("canvas");
-                // Downsample large images for faster scanning (max 256px side)
-                const maxSide = 256;
-                const scanScale = Math.min(1, maxSide / Math.max(nw, nh));
-                const sw = Math.round(nw * scanScale);
-                const sh = Math.round(nh * scanScale);
-                canvas.width = sw;
-                canvas.height = sh;
-                const ctx = canvas.getContext("2d");
-                if (!ctx) return;
-                ctx.drawImage(imgEl, 0, 0, sw, sh);
-                const { data } = ctx.getImageData(0, 0, sw, sh);
-                let minX = sw, maxX = -1, minY = sh, maxY = -1;
-                for (let py = 0; py < sh; py++) {
-                  for (let px = 0; px < sw; px++) {
-                    if (data[(py * sw + px) * 4 + 3] > 10) {
-                      if (px < minX) minX = px;
-                      if (px > maxX) maxX = px;
-                      if (py < minY) minY = py;
-                      if (py > maxY) maxY = py;
-                    }
-                  }
-                }
-                if (maxX >= minX && maxY >= minY) {
-                  // Map back from scan space → element space
-                  const fitScale = Math.min(ew / nw, eh / nh);
-                  const imgW = nw * fitScale, imgH = nh * fitScale;
-                  const offX = (ew - imgW) / 2, offY = (eh - imgH) / 2;
-                  const pixelScale = fitScale / scanScale;
-                  setContentBounds({
-                    left: offX + minX * pixelScale,
-                    top: offY + minY * pixelScale,
-                    bw: (maxX - minX + 1) * pixelScale,
-                    bh: (maxY - minY + 1) * pixelScale,
-                  });
-                }
-              } catch {
-                // Canvas taint or other error — leave contentBounds null so the
-                // full element stays interactive (pointerEvents: auto fallback).
-              }
-            }, 0);
+            if (!forExport) performScan(e.currentTarget);
           }}
           style={{
             maxWidth: "100%",

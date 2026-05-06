@@ -10,6 +10,7 @@ interface DrawingLayerProps {
   initialDataUrl?: string;
   onSave: (dataUrl: string) => void;
   onClose: () => void;
+  resolveBlobUrl?: (src: string) => string;
 }
 
 type Tool = "pencil" | "pen" | "brush" | "eraser" | "marker";
@@ -20,6 +21,7 @@ export default function DrawingLayer({
   initialDataUrl,
   onSave,
   onClose,
+  resolveBlobUrl = (s: string) => s,
 }: DrawingLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tempCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,7 +49,7 @@ export default function DrawingLayer({
 
     if (initialDataUrl) {
       const img = new Image();
-      img.src = initialDataUrl;
+      img.src = resolveBlobUrl(initialDataUrl);
       img.onload = () => {
         ctx.drawImage(img, 0, 0);
         const data = canvas.toDataURL();

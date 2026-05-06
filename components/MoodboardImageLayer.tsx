@@ -207,6 +207,7 @@ interface MoodboardImageLayerProps {
   containerHeight: number;
   onImagesChange: (images: MoodboardImage[]) => void;
   forExport?: boolean;
+  resolveBlobUrl?: (src: string) => string;
 }
 
 export default function MoodboardImageLayer({
@@ -217,6 +218,7 @@ export default function MoodboardImageLayer({
   containerHeight,
   onImagesChange,
   forExport = false,
+  resolveBlobUrl = (s: string) => s,
 }: MoodboardImageLayerProps) {
   const isSpread = containerWidth > PAGE_W * 1.1;
   const pageImages = images.filter(
@@ -285,6 +287,7 @@ export default function MoodboardImageLayer({
           containerRef={containerRef}
           allImages={images}
           onImagesChange={onImagesChange}
+          resolveBlobUrl={resolveBlobUrl}
           isSelected={selectedId === img.id}
           onSelect={() => handleSelect(img.id)}
           isBlocked={(activeId !== null && activeId !== img.id) || isLockedByOther("mbimage", img.id)}
@@ -306,6 +309,7 @@ interface ItemProps {
   containerRef: React.RefObject<HTMLDivElement>;
   allImages: MoodboardImage[];
   onImagesChange: (imgs: MoodboardImage[]) => void;
+  resolveBlobUrl: (s: string) => string;
   isSelected: boolean;
   onSelect: () => void;
   isBlocked: boolean;
@@ -322,6 +326,7 @@ function MoodboardImageItem({
   containerRef,
   allImages,
   onImagesChange,
+  resolveBlobUrl,
   isSelected,
   onSelect,
   isBlocked,
@@ -368,9 +373,9 @@ function MoodboardImageItem({
   useEffect(() => {
     if (!image.src) return;
     const img = new Image();
-    img.src = image.src;
+    img.src = resolveBlobUrl(image.src);
     img.decode().catch(() => {});
-  }, [image.src]);
+  }, [image.src, resolveBlobUrl]);
 
   const divRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<ActiveInteraction | null>(null);
@@ -891,7 +896,7 @@ function MoodboardImageItem({
           ...(image.frame && image.frame !== "none"
             ? getImageInset(image.frame)
             : { inset: 0 }),
-          backgroundImage: `url(${image.src})`,
+          backgroundImage: `url(${resolveBlobUrl(image.src)})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat",

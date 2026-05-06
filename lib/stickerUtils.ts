@@ -236,3 +236,13 @@ export async function applyWhiteStroke(
 
   return canvas.toDataURL("image/png");
 }
+
+/**
+ * Converts a base64 dataUrl to a Blob object.
+ * Used for memory-efficient image handling via URL.createObjectURL.
+ */
+export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  if (!dataUrl.startsWith("data:")) return new Blob();
+  const res = await fetch(dataUrl);
+  return await res.blob();
+}

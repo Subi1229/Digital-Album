@@ -100,6 +100,10 @@ export interface AlbumPageProps {
   hideUI?: boolean;
   /** Disable contain/transform optimisations so html2canvas captures correctly */
   forExport?: boolean;
+  /** When true, only a minimal skeleton is rendered to save memory on non-visible pages */
+  isOffscreen?: boolean;
+  /** Function to resolve a dataUrl to a Blob URL for memory efficiency */
+  resolveBlobUrl?: (src: string) => string;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -129,6 +133,8 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
       onStopDrawing,
       hideUI = false,
       forExport = false,
+      isOffscreen = false,
+      resolveBlobUrl = (s: string) => s,
     },
     ref
   ) => {
@@ -356,201 +362,203 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             document.body
           )}
 
-          {/* Add Image button */}
-          <motion.button
-            onClick={() => { setPendingFrame("none"); setShowFramePicker(true); }}
-            className="absolute flex items-center justify-center rounded-full"
-            style={{
-              top: 14,
-              right: isLeft ? 96 : undefined,
-              left: isLeft ? undefined : 96,
-              width: 32,
-              height: 32,
-              background: "rgba(255,255,255,0.94)",
-              boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
-              border: "1.5px solid rgba(0,0,0,0.05)",
-              zIndex: 60,
-              display: hideUI ? "none" : undefined,
-            }}
-            whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
-            whileTap={{ scale: 0.92 }}
-            title="Add image"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#79716B" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21 15 16 10 5 21" />
-            </svg>
-          </motion.button>
+           {/* Sticker layer */}
+           <div
+             style={{
+               position: "absolute",
+               inset: 0,
+               zIndex: 50,
+               pointerEvents: "none",
+             }}
+           >
+             {!isOffscreen && (
+               <StickerLayer
+                 stickers={stickers}
+                 pageIndex={pageIndex}
+                 containerWidth={PAGE_W}
+                 containerHeight={PAGE_H}
+                 onStickersChange={onStickersChange}
+                 forExport={forExport}
+               />
+             )}
+           </div>
 
-          {/* Add Text button */}
-          <motion.button
-            onClick={handleAddMoodboardText}
-            className="absolute flex items-center justify-center rounded-full"
-            style={{
-              top: 14,
-              right: isLeft ? 56 : undefined,
-              left: isLeft ? undefined : 56,
-              width: 32,
-              height: 32,
-              background: "rgba(255,255,255,0.94)",
-              boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
-              border: "1.5px solid rgba(0,0,0,0.05)",
-              zIndex: 60,
-              fontSize: 14,
-              fontWeight: 700,
-              color: "#57534E",
-              fontFamily: "Georgia, serif",
-              display: hideUI ? "none" : undefined,
-            }}
-            whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
-            whileTap={{ scale: 0.92 }}
-            title="Add text"
-          >
-            T
-          </motion.button>
+           {!isOffscreen && (
+             <>
+               {/* Add Image button */}
+               <motion.button
+                 onClick={() => { setPendingFrame("none"); setShowFramePicker(true); }}
+                 className="absolute flex items-center justify-center rounded-full"
+                 style={{
+                   top: 14,
+                   right: isLeft ? 96 : undefined,
+                   left: isLeft ? undefined : 96,
+                   width: 32,
+                   height: 32,
+                   background: "rgba(255,255,255,0.94)",
+                   boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
+                   border: "1.5px solid rgba(0,0,0,0.05)",
+                   zIndex: 60,
+                   display: hideUI ? "none" : undefined,
+                 }}
+                 whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
+                 whileTap={{ scale: 0.92 }}
+                 title="Add image"
+               >
+                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#79716B" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                   <circle cx="8.5" cy="8.5" r="1.5" />
+                   <polyline points="21 15 16 10 5 21" />
+                 </svg>
+               </motion.button>
 
-          {/* Sticker panel button */}
-          <motion.button
-            onClick={() => onStickerPanelOpen(pageIndex)}
-            className="absolute flex items-center justify-center rounded-full"
-            style={{
-              top: 14,
-              right: isLeft ? 16 : undefined,
-              left: isLeft ? undefined : 16,
-              width: 32,
-              height: 32,
-              background: "rgba(255,255,255,0.94)",
-              boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
-              border: "1.5px solid rgba(0,0,0,0.05)",
-              zIndex: 60,
-              display: hideUI ? "none" : undefined,
-            }}
-            whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
-            whileTap={{ scale: 0.92 }}
-            title="Sticker library"
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#79716B"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-              <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="2.5" />
-              <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="2.5" />
-            </svg>
-          </motion.button>
+               {/* Add Text button */}
+               <motion.button
+                 onClick={handleAddMoodboardText}
+                 className="absolute flex items-center justify-center rounded-full"
+                 style={{
+                   top: 14,
+                   right: isLeft ? 56 : undefined,
+                   left: isLeft ? undefined : 56,
+                   width: 32,
+                   height: 32,
+                   background: "rgba(255,255,255,0.94)",
+                   boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
+                   border: "1.5px solid rgba(0,0,0,0.05)",
+                   zIndex: 60,
+                   fontSize: 14,
+                   fontWeight: 700,
+                   color: "#57534E",
+                   fontFamily: "Georgia, serif",
+                   display: hideUI ? "none" : undefined,
+                 }}
+                 whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
+                 whileTap={{ scale: 0.92 }}
+                 title="Add text"
+               >
+                 T
+               </motion.button>
 
-          {/* Pencil (Drawing) button */}
-          <button
-            onClick={() => onStartDrawing?.(pageIndex)}
-            className="absolute flex items-center justify-center rounded-full"
-            style={{
-              top: 14,
-              right: isLeft ? 136 : undefined,
-              left: isLeft ? undefined : 136,
-              width: 32,
-              height: 32,
-              background: isDrawingActive ? "#1E1E1E" : "rgba(255,255,255,0.94)",
-              boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
-              border: "1.5px solid rgba(0,0,0,0.05)",
-              zIndex: 60,
-              color: isDrawingActive ? "#FFFFFF" : "#79716B",
-              display: hideUI ? "none" : undefined,
-            }}
-            title="Freehand Drawing"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" /></svg>
-          </button>
+               {/* Sticker panel button */}
+               <motion.button
+                 onClick={() => onStickerPanelOpen(pageIndex)}
+                 className="absolute flex items-center justify-center rounded-full"
+                 style={{
+                   top: 14,
+                   right: isLeft ? 16 : undefined,
+                   left: isLeft ? undefined : 16,
+                   width: 32,
+                   height: 32,
+                   background: "rgba(255,255,255,0.94)",
+                   boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
+                   border: "1.5px solid rgba(0,0,0,0.05)",
+                   zIndex: 60,
+                   display: hideUI ? "none" : undefined,
+                 }}
+                 whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
+                 whileTap={{ scale: 0.92 }}
+                 title="Sticker library"
+               >
+                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#79716B" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                   <circle cx="12" cy="12" r="10" />
+                   <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                   <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="2.5" />
+                   <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="2.5" />
+                 </svg>
+               </motion.button>
 
-          {/* Moodboard images layer (below stickers/washi) */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 45,
-              pointerEvents: "none",
-            }}
-          >
-            <MoodboardImageLayer
-              albumId={albumId}
-              images={moodboardImages}
-              pageIndex={pageIndex}
-              containerWidth={PAGE_W}
-              containerHeight={PAGE_H}
-              onImagesChange={onMoodboardImagesChange ?? (() => { })}
-              forExport={forExport}
-            />
-          </div>
+               {/* Pencil (Drawing) button */}
+               <button
+                 onClick={() => onStartDrawing?.(pageIndex)}
+                 className="absolute flex items-center justify-center rounded-full"
+                 style={{
+                   top: 14,
+                   right: isLeft ? 136 : undefined,
+                   left: isLeft ? undefined : 136,
+                   width: 32,
+                   height: 32,
+                   background: isDrawingActive ? "#1E1E1E" : "rgba(255,255,255,0.94)",
+                   boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
+                   border: "1.5px solid rgba(0,0,0,0.05)",
+                   zIndex: 60,
+                   color: isDrawingActive ? "#FFFFFF" : "#79716B",
+                   display: hideUI ? "none" : undefined,
+                 }}
+                 title="Freehand Drawing"
+               >
+                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" /></svg>
+               </button>
 
-          {/* Moodboard text layer — above stickers (50) and moodboard images (45) */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 55,
-              pointerEvents: "none",
-            }}
-          >
-            <MoodboardTextLayer
-              albumId={albumId}
-              pageIndex={pageIndex}
-              texts={moodboardTexts}
-              containerWidth={PAGE_W}
-              containerHeight={PAGE_H}
-              onTextsChange={onMoodboardTextsChange ?? (() => { })}
-            />
-          </div>
+               {/* Moodboard images layer (below stickers/washi) */}
+               <div style={{ position: "absolute", inset: 0, zIndex: 45, pointerEvents: "none" }}>
+                 <MoodboardImageLayer
+                   albumId={albumId}
+                   images={moodboardImages}
+                   pageIndex={pageIndex}
+                   containerWidth={PAGE_W}
+                   containerHeight={PAGE_H}
+                   onImagesChange={onMoodboardImagesChange ?? (() => { })}
+                   forExport={forExport}
+                   resolveBlobUrl={resolveBlobUrl}
+                 />
+               </div>
 
-          {/* Saved Drawing Layer (non-interactive display) */}
-          {drawings[pageIndex] && !isDrawingActive && (
-            <div className="absolute inset-0 z-[58] pointer-events-none">
-              <img
-                src={drawings[pageIndex]}
-                alt="drawing"
-                className="w-full h-full object-contain"
-              />
-            </div>
-          )}
+               {/* Moodboard text layer — above stickers (50) and moodboard images (45) */}
+               <div style={{ position: "absolute", inset: 0, zIndex: 55, pointerEvents: "none" }}>
+                 <MoodboardTextLayer
+                   albumId={albumId}
+                   pageIndex={pageIndex}
+                   texts={moodboardTexts}
+                   containerWidth={PAGE_W}
+                   containerHeight={PAGE_H}
+                   onTextsChange={onMoodboardTextsChange ?? (() => { })}
+                 />
+               </div>
 
-          {/* Active Drawing Layer (full interactive canvas) */}
-          {isDrawingActive && (
-            <DrawingLayer
-              width={PAGE_W}
-              height={PAGE_H}
-              initialDataUrl={drawings?.[pageIndex]}
-              onSave={(dataUrl) => onDrawingSave?.(pageIndex, dataUrl)}
-              onClose={() => onStopDrawing?.(() => { })}
-            />
-          )}
+               {/* Saved Drawing Layer (non-interactive display) */}
+               {drawings[pageIndex] && !isDrawingActive && (
+                 <div className="absolute inset-0 z-[58] pointer-events-none">
+                   <img
+                     src={resolveBlobUrl(drawings[pageIndex])}
+                     alt="drawing"
+                     className="w-full h-full object-contain"
+                   />
+                 </div>
+               )}
 
-          {/* Sticker layer */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 50,
-              pointerEvents: "none",
-            }}
-          >
-            <StickerLayer
-              stickers={stickers}
-              pageIndex={pageIndex}
-              containerWidth={PAGE_W}
-              containerHeight={PAGE_H}
-              onStickersChange={onStickersChange}
-              forExport={forExport}
-            />
-          </div>
-        </div>
-      );
-    }
+               {/* Active Drawing Layer (full interactive canvas) */}
+               {isDrawingActive && (
+                 <DrawingLayer
+                   width={PAGE_W}
+                   height={PAGE_H}
+                   initialDataUrl={resolveBlobUrl(drawings?.[pageIndex])}
+                   onSave={(dataUrl) => onDrawingSave?.(pageIndex, dataUrl)}
+                   onClose={() => onStopDrawing?.(() => { })}
+                 />
+               )}
+             </>
+           )}
+
+           {/* ── Page number ──────────────────────────────────────────── z:4 */}
+           <div
+             data-export-hide="true"
+             className="absolute font-sans"
+             style={{
+               bottom: 20,
+               right: isLeft ? 24 : undefined,
+               left: isLeft ? undefined : 24,
+               fontSize: 12,
+               color: "#717182",
+               letterSpacing: "0.04em",
+               zIndex: 4,
+               pointerEvents: "none",
+             }}
+           >
+             {pageNumber}
+           </div>
+         </div>
+       );
+     }
 
     return (
       <div
@@ -592,96 +600,91 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
           }}
         />
 
-        {/* ── Sticker button ───────────────────────────────────────── z:60 */}
-        <motion.button
-          onClick={() => onStickerPanelOpen(pageIndex)}
-          className="absolute flex items-center justify-center rounded-full"
-          style={{
-            top: 14,
-            right: isLeft ? 16 : undefined,
-            left: isLeft ? undefined : 16,
-            width: 32,
-            height: 32,
-            background: "rgba(255,255,255,0.94)",
-            boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
-            border: "1.5px solid rgba(0,0,0,0.05)",
-            zIndex: 60,
-            display: hideUI ? "none" : undefined,
-          }}
-          whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
-          whileTap={{ scale: 0.92 }}
-          title="Sticker library"
-        >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#79716B"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-            <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="2.5" />
-            <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="2.5" />
-          </svg>
-        </motion.button>
-
-        {/* ── Photo grid ───────────────────────────────────────────── z:2 */}
+        {/* Spine line ───────────────────────────────────────────── z:3 */}
         <div
-          className="absolute"
+          data-export-hide="true"
+          className="absolute top-0 bottom-0 w-px pointer-events-none"
           style={{
-            left: GRID_X,
-            top: GRID_Y,
-            width: GRID_W,
-            height: GRID_H,
-            zIndex: 2,
+            [isLeft ? "right" : "left"]: 0,
+            background:
+              "linear-gradient(180deg, rgba(0,0,0,0.07) 0%, rgba(0,0,0,0.04) 100%)",
+            zIndex: 3,
           }}
-        >
-          <GridLines templateId={templateId} isLeft={isLeft} />
+        />
 
-          {getSlotDefs(templateId, isLeft).map((slot, slotIndex) => (
-            <div
-              key={slotIndex}
-              className="absolute"
-              style={{ left: slot.x + INNER_PAD_X, top: slot.y + INNER_PAD_Y }}
+        {!isOffscreen && (
+          <>
+            {/* Sticker button ───────────────────────────────────────── z:60 */}
+            <motion.button
+              onClick={() => onStickerPanelOpen(pageIndex)}
+              className="absolute flex items-center justify-center rounded-full"
+              style={{
+                top: 14,
+                right: isLeft ? 16 : undefined,
+                left: isLeft ? undefined : 16,
+                width: 32,
+                height: 32,
+                background: "rgba(255,255,255,0.94)",
+                boxShadow: "0 1px 6px rgba(0,0,0,0.09)",
+                border: "1.5px solid rgba(0,0,0,0.05)",
+                zIndex: 60,
+                display: hideUI ? "none" : undefined,
+              }}
+              whileHover={{ scale: 1.1, boxShadow: "0 3px 12px rgba(0,0,0,0.14)" }}
+              whileTap={{ scale: 0.92 }}
+              title="Sticker library"
             >
-              <ImageSlot
-                imageUrl={images[slotIndex] ?? null}
-                onClick={() => onSlotClick(pageIndex, slotIndex)}
-                onDropFile={(file) => onSlotDrop(file, pageIndex, slotIndex)}
-                slotWidth={slot.w - INNER_PAD_X * 2}
-                slotHeight={slot.h - INNER_PAD_Y * 2}
-              />
-            </div>
-          ))}
-        </div>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#79716B" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="2.5" />
+                <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="2.5" />
+              </svg>
+            </motion.button>
 
-        {/* ── Sticker layer ────────────────────────────── z:50 (above all) */}
-        {/*
-            FIX: Use position:absolute + zIndex:50 so stickers always
-            render above photos (z:2) and the page-number (z:4).
-            StickerLayer itself is also position:absolute inset-0.
-        */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 50,
-            pointerEvents: "none", // layer itself passes events through
-          }}
-        >
-          <StickerLayer
-            stickers={stickers}
-            pageIndex={pageIndex}
-            containerWidth={PAGE_W}
-            containerHeight={PAGE_H}
-            onStickersChange={onStickersChange}
-            forExport={forExport}
-          />
-        </div>
+            {/* Photo grid ───────────────────────────────────────────── z:2 */}
+            <div
+              className="absolute"
+              style={{
+                left: GRID_X,
+                top: GRID_Y,
+                width: GRID_W,
+                height: GRID_H,
+                zIndex: 2,
+              }}
+            >
+              <GridLines templateId={templateId} isLeft={isLeft} />
+
+              {getSlotDefs(templateId, isLeft).map((slot, slotIndex) => (
+                <div
+                  key={slotIndex}
+                  className="absolute"
+                  style={{ left: slot.x + INNER_PAD_X, top: slot.y + INNER_PAD_Y }}
+                >
+                  <ImageSlot
+                    imageUrl={resolveBlobUrl(images[slotIndex] ?? null)}
+                    onClick={() => onSlotClick(pageIndex, slotIndex)}
+                    onDropFile={(file) => onSlotDrop(file, pageIndex, slotIndex)}
+                    slotWidth={slot.w - INNER_PAD_X * 2}
+                    slotHeight={slot.h - INNER_PAD_Y * 2}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none" }}>
+                <StickerLayer
+                  stickers={stickers}
+                  pageIndex={pageIndex}
+                  containerWidth={PAGE_W}
+                  containerHeight={PAGE_H}
+                  onStickersChange={onStickersChange}
+                  forExport={forExport}
+                  resolveBlobUrl={resolveBlobUrl}
+                />
+            </div>
+          </>
+        )}
 
         {/* ── Page number ──────────────────────────────────────────── z:4 */}
         <div
@@ -700,18 +703,6 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
         >
           {pageNumber}
         </div>
-
-        {/* ── Spine line ───────────────────────────────────────────── z:3 */}
-        <div
-          data-export-hide="true"
-          className="absolute top-0 bottom-0 w-px pointer-events-none"
-          style={{
-            [isLeft ? "right" : "left"]: 0,
-            background:
-              "linear-gradient(180deg, rgba(0,0,0,0.07) 0%, rgba(0,0,0,0.04) 100%)",
-            zIndex: 3,
-          }}
-        />
       </div>
     );
   }

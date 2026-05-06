@@ -40,6 +40,7 @@ import {
 } from "@/lib/db";
 // MOBILE FIX: shared flags so ImageSlot can suppress clicks from corner-taps
 import { markCornerTap, wasCornerTapRecent } from "@/lib/stickerInteraction";
+import { dataUrlToBlob } from "@/lib/stickerUtils";
 
 const TOTAL_PAGES = 20;
 const ALBUMS_STORAGE_KEY = "digital-photo-album:albums:v1";
@@ -170,6 +171,40 @@ export default function AlbumBook() {
 
   const [currentPage, setCurrentPage] = useState(0);
   const [drawingPageIndex, setDrawingPageIndex] = useState<number | null>(null);
+
+  // ── Blob URL Cache for memory efficiency ──
+  const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
+  const [blobUrlVersion, setBlobUrlVersion] = useState(0);
+
+  const resolveBlobUrl = useCallback((src: string) => {
+    if (!src || !src.startsWith("data:")) return src;
+    return blobUrlCacheRef.current.get(src) || src;
+  }, []);
+
+  const updateBlobCache = useCallback(async (dataUrls: string[]) => {
+    const unique = Array.from(new Set(dataUrls.filter(s => s && s.startsWith("data:") && !blobUrlCacheRef.current.has(s))));
+    if (unique.length === 0) return;
+
+    for (const dataUrl of unique) {
+      try {
+        const blob = await dataUrlToBlob(dataUrl);
+        const url = URL.createObjectURL(blob);
+        blobUrlCacheRef.current.set(dataUrl, url);
+      } catch (err) {
+        console.error("Blob conversion error:", err);
+      }
+    }
+    setBlobUrlVersion(v => v + 1);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      // Clean up blob URLs to prevent memory leaks
+      blobUrlCacheRef.current.forEach(url => URL.revokeObjectURL(url));
+      blobUrlCacheRef.current.clear();
+    };
+  }, []);
+
   const [images, setImages] = useState<Record<string, string>>({});
   const [stickers, setStickers] = useState<Sticker[]>([]);
   const [moodboardImages, setMoodboardImages] = useState<MoodboardImage[]>([]);
@@ -258,6 +293,16 @@ export default function AlbumBook() {
     setBgImageUrl(bgUrl);
     setDrawings(drws);
 
+    // Populate Blob Cache
+    const allSrcs: string[] = [
+      ...Object.values(imgMap),
+      ...stks.map(s => s.dataUrl),
+      ...moodImgs.map(m => m.src),
+      ...Object.values(drws),
+    ];
+    if (bgUrl) allSrcs.push(bgUrl);
+    await updateBlobCache(allSrcs);
+
     if (!includeLibrary) return;
 
     const existingSrcs = new Set(libStks.map((ls) => ls.src));
@@ -301,17 +346,26 @@ export default function AlbumBook() {
     })();
   }, [loadAlbumData]);
 
+  // Debounced IDB saves — during drag/resize gestures moodboardImages/Texts
+  // change 30-60×/sec; writing to IDB on every frame blocks the main thread.
+  // A 500ms debounce ensures only the final state is persisted.
   useEffect(() => {
     if (isLoading) return;
-    saveMoodboardImages(moodboardImages).catch((e) => {
-      console.error("Moodboard save error:", e);
-    });
+    const timer = setTimeout(() => {
+      saveMoodboardImages(moodboardImages).catch((e) => {
+        console.error("Moodboard save error:", e);
+      });
+    }, 500);
+    return () => clearTimeout(timer);
   }, [isLoading, moodboardImages]);
   useEffect(() => {
     if (isLoading) return;
-    saveMoodboardTexts(moodboardTexts).catch((e) => {
-      console.error("Moodboard text save error:", e);
-    });
+    const timer = setTimeout(() => {
+      saveMoodboardTexts(moodboardTexts).catch((e) => {
+        console.error("Moodboard text save error:", e);
+      });
+    }, 500);
+    return () => clearTimeout(timer);
   }, [isLoading, moodboardTexts]);
 
   // Template modal scroll — non-passive touch listeners so scroll works on tablets
@@ -1330,32 +1384,42 @@ export default function AlbumBook() {
                     disableFlipByClick={true}
                     maxShadowOpacity={0.22}
                   >
-                    {pageSequence.map((pageIdx, renderIdx) => (
-                      <AlbumPage
-                        key={`${pageIdx}-${renderIdx}`}
-                        albumId={activeAlbumId}
-                        pageIndex={pageIdx}
-                        isLeft={pageIdx % 2 === 0}
-                        images={getPageImages(pageIdx)}
-                        stickers={stickers}
-                        onSlotClick={handleSlotClick}
-                        onSlotDrop={handleSlotDrop}
-                        onStickersChange={handleStickersChange}
-                        onStickerPanelOpen={handleStickerPanelOpen}
-                        pageNumber={pageIdx + 1}
-                        templateId={getPageTemplateId(pageIdx)}
-                        moodboardImages={moodboardImages}
-                        onMoodboardImagesChange={handleMoodboardImagesChange}
-                        moodboardTexts={moodboardTexts}
-                        onMoodboardTextsChange={handleMoodboardTextsChange}
-                        bgImageUrl={bgImageUrl}
-                        drawings={drawings}
-                        onDrawingSave={handleDrawingSave}
-                        isDrawingActive={drawingPageIndex === pageIdx}
-                        onStartDrawing={(idx) => setDrawingPageIndex(idx)}
-                        onStopDrawing={() => setDrawingPageIndex(null)}
-                      />
-                    ))}
+                    {pageSequence.map((pageIdx, renderIdx) => {
+                      // GPU Optimization: Only keep the current spread and adjacent spreads "active" (with GPU hints).
+                      // The other 14+ pages don't need willChange/contain:strict/translateZ(0) which hog memory.
+                      // We keep a 6-page window (prev spread, current spread, next spread) to ensure smooth flipping.
+                      const isNearSpread = pageIdx >= currentPage - 2 && pageIdx <= currentPage + 3;
+                      
+                      return (
+                        <AlbumPage
+                          key={`${pageIdx}-${renderIdx}`}
+                          albumId={activeAlbumId}
+                          pageIndex={pageIdx}
+                          isLeft={pageIdx % 2 === 0}
+                          images={getPageImages(pageIdx)}
+                          stickers={stickers}
+                          onSlotClick={handleSlotClick}
+                          onSlotDrop={handleSlotDrop}
+                          onStickersChange={handleStickersChange}
+                          onStickerPanelOpen={handleStickerPanelOpen}
+                          pageNumber={pageIdx + 1}
+                          templateId={getPageTemplateId(pageIdx)}
+                          moodboardImages={moodboardImages}
+                          onMoodboardImagesChange={handleMoodboardImagesChange}
+                          moodboardTexts={moodboardTexts}
+                          onMoodboardTextsChange={handleMoodboardTextsChange}
+                          bgImageUrl={bgImageUrl}
+                          drawings={drawings}
+                          onDrawingSave={handleDrawingSave}
+                          isDrawingActive={drawingPageIndex === pageIdx}
+                          onStartDrawing={(idx) => setDrawingPageIndex(idx)}
+                          onStopDrawing={() => setDrawingPageIndex(null)}
+                          forExport={!isNearSpread}
+                          isOffscreen={!isNearSpread}
+                          resolveBlobUrl={resolveBlobUrl}
+                        />
+                      );
+                    })}
                   </HTMLFlipBook>
                 </div>
               </div>
