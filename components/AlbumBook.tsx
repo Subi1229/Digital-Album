@@ -221,14 +221,15 @@ export default function AlbumBook() {
   const spreadCanvasRef = useRef<HTMLDivElement>(null);
 
   // ── Flip snapshot (T5/T6, touch only) ────────────────────────────────────
-  // A rasterized flat image replaces live page content during the flip animation
-  // to collapse many GPU layers into one — eliminates flicker and "Aw, Snap".
-  // Never persisted. Revoked immediately when flip ends.
+  // Pre-captured JPEG snapshots keyed by pageIdx. Captured AFTER each flip
+  // (page static) so zero async work runs during the animation itself.
+  // Injected instantly (sync) when the next flip starts.
+  // Never persisted. Data URLs — no revocation needed.
   const [snapshotSrcs, setSnapshotSrcs] = useState<Record<number, string>>({});
-  const snapshotRevokeRef = useRef<string[]>([]);
+  const preSnapshotRef = useRef<Record<number, string>>({});
+  const snapBusyRef = useRef(false);
   // "pointer: coarse" = primary input is a finger (phone/tablet).
-  // Returns false for desktop mice and trackpads — even on touchscreen laptops
-  // where the primary pointer is still "fine" (mouse/stylus).
+  // Returns false for desktop mice/trackpads and touchscreen laptops.
   const isTouchOnlyDevice = () =>
     typeof window !== "undefined" &&
     window.matchMedia("(pointer: coarse)").matches;
@@ -1371,7 +1372,44 @@ export default function AlbumBook() {
                     startPage={0}
                     showCover={false}
                     mobileScrollSupport={false}
-                    onFlip={(e: any) => setCurrentPage(e.data)}
+                    onFlip={(e: any) => {
+                      const newPage: number = e.data;
+                      setCurrentPage(newPage);
+                      // ── Pre-capture snapshot for the NEXT flip (T5/T6, touch only) ──
+                      // Runs after the flip animation settles (page is static).
+                      // Stored in a ref so injection at next flip start is synchronous —
+                      // zero async work during the animation itself.
+                      if (isTouchOnlyDevice() && (activeTemplateId === 5 || activeTemplateId === 6) && !snapBusyRef.current) {
+                        snapBusyRef.current = true;
+                        // Delay 600ms so capture runs when user is idle, not right after flip
+                        setTimeout(async () => {
+                          try {
+                            const { default: html2canvas } = await import("html2canvas");
+                            const captureOne = async (pageIdx: number) => {
+                              const el = document.querySelector<HTMLElement>(`.album-page[data-page-idx="${pageIdx}"]`);
+                              if (!el) return;
+                              try {
+                                // scale:1 — quarter the pixels vs retina(2x), much faster
+                                const canvas = await html2canvas(el, {
+                                  scale: 1,
+                                  useCORS: true,
+                                  allowTaint: true,
+                                  backgroundColor: "#ffffff",
+                                  logging: false,
+                                });
+                                preSnapshotRef.current[pageIdx] = canvas.toDataURL("image/jpeg", 0.75);
+                              } catch (_) { /* fall back to live canvas on next flip */ }
+                            };
+                            // Sequential to avoid simultaneous CPU spike
+                            await captureOne(newPage);
+                            await captureOne(newPage + 1);
+                          } finally {
+                            snapBusyRef.current = false;
+                          }
+                        }, 600);
+                      }
+                      // ─────────────────────────────────────────────────────────────────
+                    }}
                     onChangeState={(e: any) => {
                       if (e.data === "flipping") {
                         // Hide spread canvas immediately (sync DOM) so flip animation is unobstructed
@@ -1380,43 +1418,18 @@ export default function AlbumBook() {
                         if (flipHalfTimerRef.current) clearTimeout(flipHalfTimerRef.current);
                         flipHalfTimerRef.current = setTimeout(() => setIsFlipping(true), 180);
 
-                        // ── Snapshot-during-flip (T5/T6, touch only) ──────────────────
-                        // Rasterize the two visible pages into flat JPEGs and inject them
-                        // as img overlays inside AlbumPage. This collapses many GPU layers
-                        // into one for the duration of the flip → no flicker / no crash.
+                        // ── Inject pre-captured snapshot instantly (T5/T6, touch only) ─
+                        // Synchronous — no async work during animation.
                         if (isTouchOnlyDevice() && (activeTemplateId === 5 || activeTemplateId === 6)) {
-                          // Clean up any leftover snapshot from a previous flip
-                          snapshotRevokeRef.current.forEach((u) => {
-                            try { URL.revokeObjectURL(u); } catch (_) {}
-                          });
-                          snapshotRevokeRef.current = [];
-
-                          {
-                            const pageIdxA = currentPage;
-                            const pageIdxB = currentPage + 1;
-                            const elA = document.querySelector<HTMLElement>(`.album-page[data-page-idx="${pageIdxA}"]`);
-                            const elB = document.querySelector<HTMLElement>(`.album-page[data-page-idx="${pageIdxB}"]`);
-
-                            const capture = (el: HTMLElement | null, pageIdx: number) => {
-                              if (!el) return Promise.resolve();
-                              return import("html2canvas").then(({ default: html2canvas }) =>
-                                html2canvas(el, {
-                                  scale: Math.min(window.devicePixelRatio, 2),
-                                  useCORS: true,
-                                  allowTaint: true,
-                                  backgroundColor: "#ffffff",
-                                  logging: false,
-                                })
-                              ).then((canvas) => {
-                                const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-                                snapshotRevokeRef.current.push(dataUrl);
-                                setSnapshotSrcs((prev) => ({ ...prev, [pageIdx]: dataUrl }));
-                              }).catch(() => { /* fall back to live canvas — no user impact */ });
-                            };
-
-                            capture(elA, pageIdxA);
-                            capture(elB, pageIdxB);
+                          const snapA = preSnapshotRef.current[currentPage];
+                          const snapB = preSnapshotRef.current[currentPage + 1];
+                          if (snapA || snapB) {
+                            const srcs: Record<number, string> = {};
+                            if (snapA) srcs[currentPage] = snapA;
+                            if (snapB) srcs[currentPage + 1] = snapB;
+                            setSnapshotSrcs(srcs);
                           }
+                          // If no pre-snapshot yet (first ever flip): live canvas fallback
                         }
                         // ─────────────────────────────────────────────────────────────
                       } else {
@@ -1427,14 +1440,8 @@ export default function AlbumBook() {
                         requestAnimationFrame(() => {
                           if (spreadCanvasRef.current) spreadCanvasRef.current.style.visibility = "";
                         });
-
-                        // ── Snapshot cleanup ───────────────────────────────────────────
+                        // Clear snapshot overlay
                         setSnapshotSrcs({});
-                        snapshotRevokeRef.current.forEach((u) => {
-                          try { URL.revokeObjectURL(u); } catch (_) {}
-                        });
-                        snapshotRevokeRef.current = [];
-                        // ─────────────────────────────────────────────────────────────
                       }
                     }}
                     className="album-flip"
