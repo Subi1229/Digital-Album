@@ -15,6 +15,7 @@ import CropModal from "./CropModal";
 import StickerPanel from "./StickerPanel";
 import ShareModal from "./ShareModal";
 import DesktopExperienceBanner from "./DesktopExperienceBanner";
+import TabletPerformanceBanner from "./TabletPerformanceBanner";
 import { SlotImage, Sticker, LibrarySticker, PendingCrop, MoodboardImage, MoodboardText, FrameType } from "@/lib/types";
 import FramePickerModal from "./FramePickerModal";
 import FrameOptionsModal from "./FrameOptionsModal";
@@ -859,6 +860,7 @@ export default function AlbumBook() {
         position: "relative",
       }}>
       <DesktopExperienceBanner />
+      <TabletPerformanceBanner />
 
       {/* Rotated background for mobile/tablet landscape */}
       {bgImageUrl && isMobile && (
