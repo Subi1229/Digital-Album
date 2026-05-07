@@ -75,7 +75,7 @@ export default function TabletPerformanceBanner() {
             letterSpacing: "-0.01em",
             color: "#F7FAFC",
           }}>
-            Heavy moodboard pages (GIFs, many images) may flicker on tablet due to GPU limits.{" "}
+            Heavy moodboard pages (GIFs, many images) may flicker or lag on tablet due to GPU limits.{" "}
             <span style={{ color: "#F6E05E", fontWeight: 600 }}>Best experienced on desktop.</span>
           </span>
 
