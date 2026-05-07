@@ -104,6 +104,10 @@ export interface AlbumPageProps {
   isOffscreen?: boolean;
   /** Function to resolve a dataUrl to a Blob URL for memory efficiency */
   resolveBlobUrl?: (src: string) => string;
+  /** Rasterized snapshot used during flip animation (T5/T6 touch only). When set,
+   *  live content is hidden and this flat image is shown instead — collapsing many
+   *  GPU layers into one for the duration of the flip. Never persisted. */
+  snapshotSrc?: string;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -135,6 +139,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
       forExport = false,
       isOffscreen = false,
       resolveBlobUrl = (s: string) => s,
+      snapshotSrc,
     },
     ref
   ) => {
@@ -278,8 +283,19 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
         <div
           ref={ref}
           className="album-page"
+          data-page-idx={pageIndex}
           style={{ width: PAGE_W, height: PAGE_H, background: "#FFFFFF", position: "relative", overflow: "hidden", flexShrink: 0 }}
         >
+          {/* Flip snapshot overlay — T6 touch only. Live content kept mounted (visibility:hidden)
+              so all state/refs/interactions are preserved. Snapshot is never persisted. */}
+          {snapshotSrc && (
+            <img
+              src={snapshotSrc}
+              alt=""
+              draggable={false}
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 9999, pointerEvents: "none", userSelect: "none" }}
+            />
+          )}
           {!isOffscreen && (
             <div style={{ position: "absolute", top: 0, left: offsetX, width: SPREAD_W, height: PAGE_H, pointerEvents: "none" }}>
               <div style={{ position: "absolute", inset: 0, zIndex: 45, pointerEvents: "none" }}>
@@ -312,6 +328,7 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
         <div
           ref={ref}
           className="album-page"
+          data-page-idx={pageIndex}
           onDragOver={handleMbDragOver}
           onDrop={handleMbDrop}
           style={{
@@ -327,6 +344,17 @@ const AlbumPage = forwardRef<HTMLDivElement, AlbumPageProps>(
             contain: forExport ? undefined : "layout paint",
           }}
         >
+          {/* Flip snapshot overlay — T5 touch only. Live content kept mounted (visibility:hidden)
+              so all state/refs/interactions are preserved. Snapshot is never persisted. */}
+          {snapshotSrc && (
+            <img
+              src={snapshotSrc}
+              alt=""
+              draggable={false}
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 9999, pointerEvents: "none", userSelect: "none" }}
+            />
+          )}
+
           {/* Hidden file inputs for moodboard images */}
           <input
             ref={mbFileInputRef}

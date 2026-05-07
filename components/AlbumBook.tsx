@@ -219,6 +219,19 @@ export default function AlbumBook() {
   const [isFlipping, setIsFlipping] = useState(false);
   const [isFlipAnimating, setIsFlipAnimating] = useState(false);
   const spreadCanvasRef = useRef<HTMLDivElement>(null);
+
+  // ── Flip snapshot (T5/T6, touch only) ────────────────────────────────────
+  // A rasterized flat image replaces live page content during the flip animation
+  // to collapse many GPU layers into one — eliminates flicker and "Aw, Snap".
+  // Never persisted. Revoked immediately when flip ends.
+  const [snapshotSrcs, setSnapshotSrcs] = useState<Record<number, string>>({});
+  const snapshotRevokeRef = useRef<string[]>([]);
+  // "pointer: coarse" = primary input is a finger (phone/tablet).
+  // Returns false for desktop mice and trackpads — even on touchscreen laptops
+  // where the primary pointer is still "fine" (mouse/stylus).
+  const isTouchOnlyDevice = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(pointer: coarse)").matches;
   const pickScrollRef = useRef<HTMLDivElement>(null);
   const customScrollRef = useRef<HTMLDivElement>(null);
   const flipHalfTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1366,6 +1379,46 @@ export default function AlbumBook() {
                         setIsFlipAnimating(true);
                         if (flipHalfTimerRef.current) clearTimeout(flipHalfTimerRef.current);
                         flipHalfTimerRef.current = setTimeout(() => setIsFlipping(true), 180);
+
+                        // ── Snapshot-during-flip (T5/T6, touch only) ──────────────────
+                        // Rasterize the two visible pages into flat JPEGs and inject them
+                        // as img overlays inside AlbumPage. This collapses many GPU layers
+                        // into one for the duration of the flip → no flicker / no crash.
+                        if (isTouchOnlyDevice() && (activeTemplateId === 5 || activeTemplateId === 6)) {
+                          // Clean up any leftover snapshot from a previous flip
+                          snapshotRevokeRef.current.forEach((u) => {
+                            try { URL.revokeObjectURL(u); } catch (_) {}
+                          });
+                          snapshotRevokeRef.current = [];
+
+                          {
+                            const pageIdxA = currentPage;
+                            const pageIdxB = currentPage + 1;
+                            const elA = document.querySelector<HTMLElement>(`.album-page[data-page-idx="${pageIdxA}"]`);
+                            const elB = document.querySelector<HTMLElement>(`.album-page[data-page-idx="${pageIdxB}"]`);
+
+                            const capture = (el: HTMLElement | null, pageIdx: number) => {
+                              if (!el) return Promise.resolve();
+                              return import("html2canvas").then(({ default: html2canvas }) =>
+                                html2canvas(el, {
+                                  scale: Math.min(window.devicePixelRatio, 2),
+                                  useCORS: true,
+                                  allowTaint: true,
+                                  backgroundColor: "#ffffff",
+                                  logging: false,
+                                })
+                              ).then((canvas) => {
+                                const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+                                snapshotRevokeRef.current.push(dataUrl);
+                                setSnapshotSrcs((prev) => ({ ...prev, [pageIdx]: dataUrl }));
+                              }).catch(() => { /* fall back to live canvas — no user impact */ });
+                            };
+
+                            capture(elA, pageIdxA);
+                            capture(elB, pageIdxB);
+                          }
+                        }
+                        // ─────────────────────────────────────────────────────────────
                       } else {
                         if (flipHalfTimerRef.current) { clearTimeout(flipHalfTimerRef.current); flipHalfTimerRef.current = null; }
                         setIsFlipping(false);
@@ -1374,6 +1427,14 @@ export default function AlbumBook() {
                         requestAnimationFrame(() => {
                           if (spreadCanvasRef.current) spreadCanvasRef.current.style.visibility = "";
                         });
+
+                        // ── Snapshot cleanup ───────────────────────────────────────────
+                        setSnapshotSrcs({});
+                        snapshotRevokeRef.current.forEach((u) => {
+                          try { URL.revokeObjectURL(u); } catch (_) {}
+                        });
+                        snapshotRevokeRef.current = [];
+                        // ─────────────────────────────────────────────────────────────
                       }
                     }}
                     className="album-flip"
@@ -1420,6 +1481,7 @@ export default function AlbumBook() {
                           forExport={!isNearSpread}
                           isOffscreen={!isNearSpread}
                           resolveBlobUrl={resolveBlobUrl}
+                          snapshotSrc={snapshotSrcs[pageIdx]}
                         />
                       );
                     })}
