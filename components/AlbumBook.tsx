@@ -233,6 +233,24 @@ export default function AlbumBook() {
   const isTouchOnlyDevice = () =>
     typeof window !== "undefined" &&
     window.matchMedia("(pointer: coarse)").matches;
+
+  // Capture helper — reused by mount effect and onFlip
+  const capturePageSnapshot = async (pageIdx: number) => {
+    const el = document.querySelector<HTMLElement>(`.album-page[data-page-idx="${pageIdx}"]`);
+    if (!el) return;
+    try {
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(el, {
+        scale: 1,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+      preSnapshotRef.current[pageIdx] = canvas.toDataURL("image/jpeg", 0.75);
+    } catch (_) {}
+  };
+
   const pickScrollRef = useRef<HTMLDivElement>(null);
   const customScrollRef = useRef<HTMLDivElement>(null);
   const flipHalfTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -749,6 +767,26 @@ export default function AlbumBook() {
   }, [activeTab, albums]);
 
   const pageSequence = Array.from({ length: TOTAL_PAGES }, (_, i) => i);
+
+  // On mount: pre-snapshot the initial visible spread (T5/T6, touch only)
+  // so the very first flip already has a snapshot ready.
+  useEffect(() => {
+    if (!isTouchOnlyDevice()) return;
+    if (activeTemplateId !== 5 && activeTemplateId !== 6) return;
+    let timer: ReturnType<typeof setTimeout>;
+    timer = setTimeout(async () => {
+      if (snapBusyRef.current) return;
+      snapBusyRef.current = true;
+      try {
+        await capturePageSnapshot(currentPage);
+        await capturePageSnapshot(currentPage + 1);
+      } finally {
+        snapBusyRef.current = false;
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTemplateId]);
 
   // ————————————————————————————————————————————————————————————————————————————————
   const goNext = useCallback(() => {
@@ -1381,32 +1419,16 @@ export default function AlbumBook() {
                       // zero async work during the animation itself.
                       if (isTouchOnlyDevice() && (activeTemplateId === 5 || activeTemplateId === 6) && !snapBusyRef.current) {
                         snapBusyRef.current = true;
-                        // Delay 600ms so capture runs when user is idle, not right after flip
+                        // 300ms: page is already static (onFlip fires after animation ends),
+                        // short delay to let React finish painting before capture
                         setTimeout(async () => {
                           try {
-                            const { default: html2canvas } = await import("html2canvas");
-                            const captureOne = async (pageIdx: number) => {
-                              const el = document.querySelector<HTMLElement>(`.album-page[data-page-idx="${pageIdx}"]`);
-                              if (!el) return;
-                              try {
-                                // scale:1 — quarter the pixels vs retina(2x), much faster
-                                const canvas = await html2canvas(el, {
-                                  scale: 1,
-                                  useCORS: true,
-                                  allowTaint: true,
-                                  backgroundColor: "#ffffff",
-                                  logging: false,
-                                });
-                                preSnapshotRef.current[pageIdx] = canvas.toDataURL("image/jpeg", 0.75);
-                              } catch (_) { /* fall back to live canvas on next flip */ }
-                            };
-                            // Sequential to avoid simultaneous CPU spike
-                            await captureOne(newPage);
-                            await captureOne(newPage + 1);
+                            await capturePageSnapshot(newPage);
+                            await capturePageSnapshot(newPage + 1);
                           } finally {
                             snapBusyRef.current = false;
                           }
-                        }, 600);
+                        }, 300);
                       }
                       // ─────────────────────────────────────────────────────────────────
                     }}
